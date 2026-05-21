@@ -1,6 +1,7 @@
 // Netlify Scheduled Function: send-notifications
 // 매일 4시간 간격(KST 9시/13시/17시/21시)으로 텔레그램 단체방에 마감 알림을 보냅니다.
 // 각 할일마다 "✅ 완료" 버튼이 붙어있어서 탭하면 바로 완료 처리됩니다.
+// 반복 할일(매일/매주/매월)은 완료 시 자동으로 다음 일정으로 넘어갑니다.
 
 const { schedule } = require('@netlify/functions');
 const { createClient } = require('@supabase/supabase-js');
@@ -18,7 +19,6 @@ const handler = async () => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // KST 오늘 날짜
   const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const todayStr = kstNow.toISOString().split('T')[0];
   const todayLabel = kstNow.toLocaleDateString('ko-KR', {
@@ -30,7 +30,6 @@ const handler = async () => {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
 
-  // 전체 미완료 할일 조회
   const { data: tasks, error } = await supabase
     .from('tasks')
     .select('*')
@@ -42,7 +41,6 @@ const handler = async () => {
     return { statusCode: 500, body: 'DB error' };
   }
 
-  // 그룹화
   const overdue = [];
   const d0 = [];
   const d1 = [];
@@ -62,6 +60,13 @@ const handler = async () => {
 
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
+  const recurEmoji = (r) => {
+    if (r === 'daily') return ' 🔄매일';
+    if (r === 'weekly') return ' 🔄매주';
+    if (r === 'monthly') return ' 🔄매월';
+    return '';
+  };
+
   let msg = `📋 <b>${esc(todayLabel)} ${esc(timeLabel)}</b>\n오늘의 할일 요약이에요.\n`;
   const buttons = [];
 
@@ -69,14 +74,13 @@ const handler = async () => {
     if (list.length === 0) return;
     msg += `\n${title}\n`;
     list.forEach(t => {
-      const suffix = withDiffLabel
-        ? (t.diff !== undefined ? (t.diff < 0 ? ` <i>(${-t.diff}일 지남)</i>` : ` <i>(D-${t.diff})</i>`) : '')
+      const diffSuffix = withDiffLabel && t.diff !== undefined
+        ? (t.diff < 0 ? ` <i>(${-t.diff}일 지남)</i>` : ` <i>(D-${t.diff})</i>`)
         : '';
-      msg += `• ${esc(t.title)}${suffix}\n`;
-      buttons.push([{
-        text: `✅ ${t.title.length > 40 ? t.title.slice(0, 40) + '…' : t.title}`,
-        callback_data: `done:${t.id}`,
-      }]);
+      const recur = recurEmoji(t.recurrence);
+      msg += `• ${esc(t.title)}<i>${esc(recur)}</i>${diffSuffix}\n`;
+      const btnLabel = `✅ ${t.title.length > 38 ? t.title.slice(0, 38) + '…' : t.title}`;
+      buttons.push([{ text: btnLabel, callback_data: `done:${t.id}` }]);
     });
   }
 
@@ -89,10 +93,9 @@ const handler = async () => {
   if (buttons.length === 0) {
     msg += `\n🌿 임박한 일정이 없어요. 여유로운 시간이에요!`;
   } else {
-    msg += `\n<i>아래 버튼을 누르면 바로 완료 처리돼요.</i>`;
+    msg += `\n<i>버튼을 누르면 바로 완료 처리돼요. 반복 일정은 다음 회차로 자동 넘어가요.</i>`;
   }
 
-  // 텔레그램 발송
   try {
     const payload = {
       chat_id: TELEGRAM_CHAT_ID,
@@ -122,6 +125,5 @@ const handler = async () => {
   }
 };
 
-// 매일 KST 9시 / 13시 / 17시 / 21시 (4시간 간격, 깨어있는 시간대)
-// UTC 기준: 0시 / 4시 / 8시 / 12시
+// 매일 KST 9시 / 13시 / 17시 / 21시 (4시간 간격)
 exports.handler = schedule('0 0,4,8,12 * * *', handler);
