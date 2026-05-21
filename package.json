@@ -1,0 +1,10 @@
+{
+  "name": "mindcare-todos",
+  "version": "1.0.0",
+  "description": "할일 관리 + 텔레그램 봇 알림",
+  "private": true,
+  "dependencies": {
+    "@netlify/functions": "^2.8.0",
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}
