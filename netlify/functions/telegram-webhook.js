@@ -1,16 +1,12 @@
 // Netlify Function: telegram-webhook
-// 텔레그램에서 "✅ 완료" 버튼이 눌렸을 때 호출됩니다.
-// - 일반 할일: status를 done으로 변경
-// - 반복 할일(daily/weekly/monthly): deadline을 다음 회차로 이동 (status는 pending 유지)
+// 텔레그램에서 봇으로 들어오는 이벤트를 처리합니다.
+// - 메시지 "/id" 또는 "/start": 해당 채팅의 Chat ID를 회신
+// - 콜백 쿼리 "done:<task_id>": 할일 완료 처리 (반복 일정은 다음 회차로)
 
 const { createClient } = require('@supabase/supabase-js');
 
-function addDays(date, n) {
-  const r = new Date(date); r.setDate(r.getDate() + n); return r;
-}
-function addMonths(date, n) {
-  const r = new Date(date); r.setMonth(r.getMonth() + n); return r;
-}
+function addDays(date, n) { const r = new Date(date); r.setDate(r.getDate() + n); return r; }
+function addMonths(date, n) { const r = new Date(date); r.setMonth(r.getMonth() + n); return r; }
 function toISODate(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -52,14 +48,40 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: 'bad json' };
   }
 
-  const cb = update.callback_query;
-  if (!cb) {
-    return { statusCode: 200, body: 'ignored' };
+  // ===== 일반 메시지 처리 (/id, /start) =====
+  if (update.message) {
+    const msg = update.message;
+    const text = (msg.text || '').trim().toLowerCase();
+    if (text === '/id' || text === '/start' || text === '/start@mindcare12000_bot' || text === '/id@mindcare12000_bot') {
+      const chatId = msg.chat.id;
+      const chatTitle = msg.chat.title || '개인 채팅';
+      const replyText = `안녕하세요! 👋\n\n이 채팅의 <b>Chat ID</b>는:\n<code>${chatId}</code>\n\n위 ID를 복사해서 웹페이지(MindCare Tasks)의 <b>⚙ 설정</b>에 붙여넣으세요.\n\n채팅방 이름: <b>${chatTitle}</b>`;
+      try {
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: replyText,
+            parse_mode: 'HTML',
+          }),
+        });
+      } catch (e) {
+        console.error('Failed to send id reply:', e);
+      }
+      return { statusCode: 200, body: 'id sent' };
+    }
+    return { statusCode: 200, body: 'msg ignored' };
   }
+
+  // ===== 콜백 쿼리 처리 (버튼 클릭) =====
+  const cb = update.callback_query;
+  if (!cb) return { statusCode: 200, body: 'ignored' };
 
   const data = cb.data || '';
   const callbackId = cb.id;
   const message = cb.message;
+  const chatId = message?.chat?.id;
 
   async function answer(text, showAlert = false) {
     try {
@@ -82,9 +104,10 @@ exports.handler = async (event) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    // 할일 조회
     const { data: existing, error: fetchErr } = await supabase
       .from('tasks')
-      .select('id, title, status, recurrence, deadline')
+      .select('id, title, status, recurrence, deadline, user_id')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -92,6 +115,15 @@ exports.handler = async (event) => {
       console.error('Fetch failed:', fetchErr);
       await answer('이미 삭제된 할일이에요', true);
       return { statusCode: 200, body: 'not found' };
+    }
+
+    // 권한 확인: 이 chat_id가 해당 task의 user_id와 매칭되는지
+    const { data: profile } = await supabase
+      .from('profiles').select('id').eq('telegram_chat_id', String(chatId)).maybeSingle();
+
+    if (!profile || profile.id !== existing.user_id) {
+      await answer('이 할일에 대한 권한이 없어요', true);
+      return { statusCode: 200, body: 'unauthorized' };
     }
 
     if (existing.status === 'done') {
@@ -104,7 +136,6 @@ exports.handler = async (event) => {
     let toastText = '';
 
     if (recurrence === 'once') {
-      // 일반 할일 → done 처리
       const { error: updateErr } = await supabase
         .from('tasks').update({ status: 'done' }).eq('id', taskId);
       if (updateErr) {
@@ -115,7 +146,6 @@ exports.handler = async (event) => {
       newButtonLabel = `✓ ${existing.title} (완료)`;
       toastText = `✅ 완료 처리됐어요: ${existing.title}`;
     } else {
-      // 반복 할일 → deadline 다음으로 이동
       const nextDeadline = advanceDeadline(existing.deadline, recurrence);
       const { error: updateErr } = await supabase
         .from('tasks').update({ deadline: nextDeadline }).eq('id', taskId);
@@ -133,7 +163,7 @@ exports.handler = async (event) => {
 
     await answer(toastText, false);
 
-    // 원본 메시지의 해당 버튼만 회색 처리
+    // 버튼 회색 처리
     if (message && message.reply_markup) {
       try {
         const keyboard = message.reply_markup.inline_keyboard || [];

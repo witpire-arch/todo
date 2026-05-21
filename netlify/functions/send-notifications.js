@@ -1,44 +1,26 @@
 // Netlify Scheduled Function: send-notifications
-// 매일 4시간 간격(KST 9시/13시/17시/21시)으로 텔레그램 단체방에 마감 알림을 보냅니다.
-// "오늘 마감(D-DAY)" 항목에만 "✅ 완료" 버튼이 붙고, 다른 일정은 정보만 표시합니다.
-// 반복 할일(매일/매주/매월)은 완료 시 자동으로 다음 일정으로 넘어갑니다.
+// 매일 4시간 간격(KST 9시/13시/17시/21시)으로 모든 사용자에게 마감 알림을 보냅니다.
+// 각 사용자별로 본인의 할일을 본인의 텔레그램 채팅방으로 발송합니다.
 
 const { schedule } = require('@netlify/functions');
 const { createClient } = require('@supabase/supabase-js');
 
-const handler = async () => {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-  const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+async function sendForUser(supabase, telegramToken, profile, kstNow, todayLabel, timeLabel) {
+  const chatId = profile.telegram_chat_id;
+  if (!chatId) return { skipped: true, reason: 'no chat_id' };
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.error('Missing environment variables');
-    return { statusCode: 500, body: 'Missing env vars' };
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const todayStr = kstNow.toISOString().split('T')[0];
-  const todayLabel = kstNow.toLocaleDateString('ko-KR', {
-    timeZone: 'UTC',
-    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
-  });
-  const timeLabel = kstNow.toLocaleTimeString('ko-KR', {
-    timeZone: 'UTC',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
 
   const { data: tasks, error } = await supabase
     .from('tasks')
     .select('*')
     .eq('status', 'pending')
+    .eq('user_id', profile.id)
     .order('deadline', { ascending: true });
 
   if (error) {
-    console.error(error);
-    return { statusCode: 500, body: 'DB error' };
+    console.error(`User ${profile.id} task fetch failed:`, error);
+    return { error: error.message };
   }
 
   const overdue = [];
@@ -59,7 +41,6 @@ const handler = async () => {
   }
 
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-
   const recurEmoji = (r) => {
     if (r === 'daily') return ' 🔄매일';
     if (r === 'weekly') return ' 🔄매주';
@@ -86,46 +67,96 @@ const handler = async () => {
     });
   }
 
-  // 버튼은 D-DAY(오늘 마감)에만 표시
   addSection(`❗ <b>기한 초과 (${overdue.length})</b>`, overdue, true, false);
   addSection(`🚨 <b>오늘 마감 · D-DAY (${d0.length})</b>`, d0, false, true);
   addSection(`⏰ <b>내일 마감 · D-1 (${d1.length})</b>`, d1, false, false);
   addSection(`📅 <b>3일 후 마감 · D-3 (${d3.length})</b>`, d3, false, false);
   addSection(`📌 <b>이번 주 일정</b>`, upcoming, true, false);
 
-  if (overdue.length + d0.length + d1.length + d3.length + upcoming.length === 0) {
+  const total = overdue.length + d0.length + d1.length + d3.length + upcoming.length;
+  if (total === 0) {
     msg += `\n🌿 임박한 일정이 없어요. 여유로운 시간이에요!`;
   } else if (buttons.length > 0) {
     msg += `\n<i>오늘 마감 항목은 아래 버튼으로 바로 완료 처리할 수 있어요.</i>`;
   }
 
-  try {
-    const payload = {
-      chat_id: TELEGRAM_CHAT_ID,
-      text: msg,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    };
-    if (buttons.length > 0) {
-      payload.reply_markup = { inline_keyboard: buttons };
-    }
+  const payload = {
+    chat_id: chatId,
+    text: msg,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  };
+  if (buttons.length > 0) {
+    payload.reply_markup = { inline_keyboard: buttons };
+  }
 
-    const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+  try {
+    const tgRes = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const tgJson = await tgRes.json();
     if (!tgJson.ok) {
-      console.error('Telegram error:', tgJson);
-      return { statusCode: 502, body: JSON.stringify(tgJson) };
+      console.error(`User ${profile.id} Telegram error:`, tgJson);
+      return { error: tgJson.description };
     }
-    console.log('Sent OK:', { tasks: tasks?.length, buttons: buttons.length });
-    return { statusCode: 200, body: 'sent' };
+    return { sent: true, tasks: tasks?.length || 0 };
   } catch (err) {
-    console.error(err);
-    return { statusCode: 500, body: err.message };
+    console.error(`User ${profile.id} send failed:`, err);
+    return { error: err.message };
   }
+}
+
+const handler = async () => {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+  const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !TELEGRAM_BOT_TOKEN) {
+    console.error('Missing environment variables');
+    return { statusCode: 500, body: 'Missing env vars' };
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const todayLabel = kstNow.toLocaleDateString('ko-KR', {
+    timeZone: 'UTC',
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+  });
+  const timeLabel = kstNow.toLocaleTimeString('ko-KR', {
+    timeZone: 'UTC',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+
+  // 텔레그램 chat_id가 설정된 모든 사용자 조회
+  const { data: profiles, error } = await supabase
+    .from('profiles')
+    .select('id, email, telegram_chat_id')
+    .not('telegram_chat_id', 'is', null);
+
+  if (error) {
+    console.error('Profiles fetch failed:', error);
+    return { statusCode: 500, body: 'DB error' };
+  }
+
+  if (!profiles || profiles.length === 0) {
+    console.log('No users with telegram_chat_id');
+    return { statusCode: 200, body: 'no users' };
+  }
+
+  const results = [];
+  for (const profile of profiles) {
+    const result = await sendForUser(
+      supabase, TELEGRAM_BOT_TOKEN, profile,
+      kstNow, todayLabel, timeLabel
+    );
+    results.push({ user: profile.email, ...result });
+  }
+
+  console.log('Notification results:', results);
+  return { statusCode: 200, body: JSON.stringify({ sent: results.length, results }) };
 };
 
 // 매일 KST 9시 / 13시 / 17시 / 21시 (4시간 간격)
