@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>할일 정리 · MindCare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f4efe7;
+    --surface: #ffffff;
+    --surface-2: #faf6ee;
+    --text: #1c1a17;
+    --text-soft: #6b6760;
+    --border: #e3dccf;
+    --accent: #2d3a55;
+    --urgent: #b8412c;
+    --warn: #b8762c;
+    --ok: #4a6b3e;
+    --shadow: 0 1px 2px rgba(28, 26, 23, 0.04), 0 8px 24px rgba(28, 26, 23, 0.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "IBM Plex Sans KR", -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    min-height: 100vh;
+    padding: 32px 20px 80px;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header {
+    margin-bottom: 36px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  header .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 8px;
+  }
+  header h1 {
+    font-family: "Gowun Batang", serif;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  header .date {
+    font-family: "Gowun Batang", serif;
+    color: var(--text-soft);
+    font-size: 14px;
+    margin-top: 4px;
+  }
+
+  section { margin-bottom: 32px; }
+
+  .section-title {
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    padding: 8px 0;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-soft);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+  }
+
+  .input-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  textarea, input[type="text"], input[type="date"] {
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--text);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 2px;
+    padding: 10px 12px;
+    outline: none;
+    line-height: 1.5;
+  }
+  textarea:focus, input:focus { border-color: var(--accent); }
+
+  textarea {
+    width: 100%;
+    min-height: 140px;
+    border: none;
+    background: transparent;
+    resize: vertical;
+    padding: 0;
+  }
+  textarea::placeholder { color: #b8b1a5; }
+
+  .quick-form {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+  .quick-form input[type="text"] { flex: 1; }
+  .quick-form input[type="date"] { width: 160px; font-family: "Gowun Batang", serif; }
+
+  .input-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.02em;
+  }
+  button:hover { background: var(--surface-2); border-color: var(--text-soft); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  button.primary:hover { background: #1f2a3f; border-color: #1f2a3f; }
+  button.danger { color: var(--urgent); }
+
+  .preview {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .preview-title {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+    letter-spacing: 0.06em;
+  }
+  .preview-item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .preview-item:last-child { border-bottom: none; }
+  .preview-item input[type="text"] { flex: 1; }
+  .preview-item input[type="date"] { width: 145px; }
+  .preview-item .remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    font-size: 16px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .preview-item .remove-btn:hover { color: var(--urgent); }
+
+  .group { margin-bottom: 24px; }
+  .group-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .group-label {
+    font-family: "Gowun Batang", serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .group-count { font-size: 12px; color: var(--text-soft); letter-spacing: 0.06em; }
+  .group.urgent .group-label { color: var(--urgent); }
+  .group.warn .group-label { color: var(--warn); }
+
+  .task {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin-bottom: 6px;
+    transition: all 0.15s ease;
+  }
+  .task:hover { box-shadow: var(--shadow); }
+  .task.done { opacity: 0.5; }
+  .task.done .task-title { text-decoration: line-through; }
+
+  .task-check {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+  .task-check:hover { border-color: var(--accent); }
+  .task.done .task-check { background: var(--ok); border-color: var(--ok); }
+  .task.done .task-check::after {
+    content: "";
+    position: absolute;
+    top: 3px; left: 5px;
+    width: 4px; height: 8px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-size: 14.5px; font-weight: 500; }
+  .task-meta {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-top: 2px;
+    font-family: "Gowun Batang", serif;
+  }
+  .task-actions { display: flex; gap: 4px; }
+  .task-actions button {
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .task-actions button:hover { color: var(--urgent); background: transparent; }
+
+  .dday {
+    font-family: "Gowun Batang", serif;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+  }
+  .dday.d-overdue { background: #f5d4cc; color: var(--urgent); }
+  .dday.d-0 { background: #fbe1d8; color: var(--urgent); }
+  .dday.d-1 { background: #fbecd8; color: var(--warn); }
+  .dday.d-week { background: #e8e4d8; color: var(--text-soft); }
+  .dday.d-later { background: #efeae0; color: var(--text-soft); }
+
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-soft);
+    font-family: "Gowun Batang", serif;
+    font-size: 15px;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .hint code {
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 11px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 20px;
+    border-radius: 2px;
+    font-size: 13px;
+    transition: transform 0.25s ease;
+    z-index: 100;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .hidden { display: none; }
+
+  @media (max-width: 600px) {
+    body { padding: 20px 14px 60px; }
+    header h1 { font-size: 26px; }
+    .quick-form { flex-wrap: wrap; }
+    .quick-form input[type="text"] { width: 100%; }
+    .quick-form input[type="date"] { width: 100%; }
+    .preview-item { flex-wrap: wrap; }
+    .preview-item input[type="text"] { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">MindCare · Tasks</div>
+    <h1>오늘의 할일</h1>
+    <div class="date" id="todayDate"></div>
+  </header>
+
+  <section>
+    <div class="section-title">새 할일 입력</div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="quick">한 줄씩</button>
+      <button class="tab" data-tab="bulk">여러 줄</button>
+    </div>
+
+    <div class="input-card">
+      <div id="quickTab">
+        <div class="quick-form">
+          <input type="text" id="quickTitle" placeholder="할일 제목 (예: 회의록 정리)" />
+          <input type="date" id="quickDate" />
+          <button id="quickAdd" class="primary">추가</button>
+        </div>
+        <div class="hint">제목을 적고 날짜를 골라서 "추가"를 누르면 바로 저장돼요.</div>
+      </div>
+
+      <div id="bulkTab" class="hidden">
+        <textarea id="rawInput" placeholder="여러 줄로 한꺼번에 입력하세요. 한 줄에 하나씩.&#10;&#10;예시:&#10;월요일까지 회의록 정리&#10;다음주 수요일까지 예산안 작성&#10;6월 5일 보고서 제출&#10;오늘 안에 영수증 정리&#10;내일 강의자료 검토"></textarea>
+        <div class="hint">
+          날짜 표현은 자동으로 인식해요: <code>오늘</code>, <code>내일</code>, <code>모레</code>,
+          <code>월요일</code>, <code>다음주 수요일</code>, <code>6월 5일</code>, <code>12/25</code>, <code>이번 주말</code> 등.
+          인식 못 한 줄은 오늘 날짜로 들어가니까 미리보기에서 수정하시면 돼요.
+        </div>
+        <div class="input-actions">
+          <button id="clearBtn">지우기</button>
+          <button id="parseBtn" class="primary">분석하기</button>
+        </div>
+        <div id="previewArea"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">진행 중인 할일</div>
+    <div id="taskList"></div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============ CONFIG ============
+  const SUPABASE_URL = 'https://yzawmgbcbzmlwkcrptmm.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_uhehm3WWLisYPy2PlCMJ8g_ewrVw_fD';
+  // ================================
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => document.querySelectorAll(s);
+  const els = {
+    quickTitle: $('#quickTitle'),
+    quickDate: $('#quickDate'),
+    quickAdd: $('#quickAdd'),
+    raw: $('#rawInput'),
+    parseBtn: $('#parseBtn'),
+    clearBtn: $('#clearBtn'),
+    preview: $('#previewArea'),
+    list: $('#taskList'),
+    toast: $('#toast'),
+    today: $('#todayDate'),
+  };
+
+  const today = new Date();
+  els.today.textContent = today.toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+  });
+  // 기본 날짜는 오늘
+  els.quickDate.value = toISODate(today);
+
+  // ---- 탭 전환 ----
+  $$('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      $$('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const tab = t.dataset.tab;
+      $('#quickTab').classList.toggle('hidden', tab !== 'quick');
+      $('#bulkTab').classList.toggle('hidden', tab !== 'bulk');
+    });
+  });
+
+  // ---- Toast ----
+  let toastTimer;
+  function toast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => els.toast.classList.remove('show'), 2400);
+  }
+
+  // ---- 날짜 유틸 ----
+  function toISODate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function addDays(d, n) {
+    const r = new Date(d);
+    r.setDate(r.getDate() + n);
+    return r;
+  }
+
+  // ---- 자연어 날짜 파서 ----
+  // 한 줄에서 마감일을 추출하고, 제목에서 날짜 표현을 제거합니다.
+  function parseLine(line) {
+    const base = new Date(today);
+    base.setHours(0, 0, 0, 0);
+
+    let deadline = null;
+    let cleanedTitle = line;
+    let matched = '';
+
+    // 1) "6월 5일", "12월 25일" - 절대 날짜
+    let m = line.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (m) {
+      const month = parseInt(m[1], 10);
+      const day = parseInt(m[2], 10);
+      let y = base.getFullYear();
+      let candidate = new Date(y, month - 1, day);
+      if (candidate < base) candidate = new Date(y + 1, month - 1, day);
+      deadline = candidate;
+      matched = m[0];
+    }
+
+    // 2) "12/25", "6/5"
+    if (!deadline) {
+      m = line.match(/(\d{1,2})\/(\d{1,2})(?!\d)/);
+      if (m) {
+        const month = parseInt(m[1], 10);
+        const day = parseInt(m[2], 10);
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          let y = base.getFullYear();
+          let candidate = new Date(y, month - 1, day);
+          if (candidate < base) candidate = new Date(y + 1, month - 1, day);
+          deadline = candidate;
+          matched = m[0];
+        }
+      }
+    }
+
+    // 3) "다음주 X요일" / "담주 X요일"
+    if (!deadline) {
+      m = line.match(/(다음\s*주|담\s*주)\s*([일월화수목금토])요일/);
+      if (m) {
+        const dayChar = m[2];
+        deadline = nextWeekday(base, dayChar, true);
+        matched = m[0];
+      }
+    }
+
+    // 4) "이번주 X요일"
+    if (!deadline) {
+      m = line.match(/(이번\s*주)\s*([일월화수목금토])요일/);
+      if (m) {
+        deadline = nextWeekday(base, m[2], false, true);
+        matched = m[0];
+      }
+    }
+
+    // 5) "X요일" 단독 (가장 가까운 그 요일)
+    if (!deadline) {
+      m = line.match(/([일월화수목금토])요일/);
+      if (m) {
+        deadline = nextWeekday(base, m[1], false);
+        matched = m[0];
+      }
+    }
+
+    // 6) 상대 표현
+    if (!deadline) {
+      const relMap = [
+        { re: /오늘/, days: () => 0 },
+        { re: /내일/, days: () => 1 },
+        { re: /모레/, days: () => 2 },
+        { re: /글피/, days: () => 3 },
+        { re: /이번\s*주말/, days: (b) => {
+          // 이번 주 토요일 (오늘이 토/일이면 가장 가까운 토요일은 다음주로)
+          const dow = b.getDay(); // 0=일, 6=토
+          if (dow === 0) return 6; // 일요일 → 다음주 토요일
+          if (dow === 6) return 0; // 토요일 → 오늘
+          return 6 - dow;
+        }},
+        { re: /다음\s*주말/, days: (b) => {
+          const dow = b.getDay();
+          return (6 - dow) + 7;
+        }},
+        { re: /다음\s*주|담\s*주/, days: () => 7 },
+        { re: /이번\s*주/, days: (b) => {
+          // 이번 주 금요일 기본
+          const dow = b.getDay();
+          if (dow >= 5) return 0; // 이미 금/토/일이면 오늘
+          return 5 - dow;
+        }},
+      ];
+      for (const item of relMap) {
+        const mm = line.match(item.re);
+        if (mm) {
+          deadline = addDays(base, item.days(base));
+          matched = mm[0];
+          break;
+        }
+      }
+    }
+
+    // 마감일 없으면 오늘로
+    if (!deadline) deadline = base;
+
+    // 제목에서 날짜 표현 + "까지", "안에", "중에", "쯤" 제거
+    if (matched) {
+      const re = new RegExp(
+        matched.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*(까지|안에|중에|쯤)?',
+        ''
+      );
+      cleanedTitle = cleanedTitle.replace(re, '').trim();
+    }
+    cleanedTitle = cleanedTitle.replace(/^[\s,;:•·\-—]+|[\s,;:•·\-—]+$/g, '');
+    if (!cleanedTitle) cleanedTitle = line.trim();
+
+    return {
+      title: cleanedTitle.slice(0, 100),
+      deadline: toISODate(deadline),
+    };
+  }
+
+  // 오늘 이후의 가장 가까운 해당 요일을 반환
+  // dayChar: '일'..'토', forceNextWeek: 한 주 더 더하기, thisWeekOnly: 이번 주만
+  function nextWeekday(base, dayChar, forceNextWeek = false, thisWeekOnly = false) {
+    const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+    const target = weekDays.indexOf(dayChar);
+    const baseDow = base.getDay();
+    let diff = target - baseDow;
+    if (thisWeekOnly) {
+      // 이번 주: 음수면 이미 지남, 그래도 그 요일 (음수 그대로? 아니면 다음주로?)
+      if (diff < 0) diff += 7;
+    } else {
+      if (diff <= 0) diff += 7; // 가장 가까운 미래
+    }
+    if (forceNextWeek) diff += 7;
+    return addDays(base, diff);
+  }
+
+  // ---- 한 줄씩 추가 ----
+  els.quickAdd.addEventListener('click', async () => {
+    const title = els.quickTitle.value.trim();
+    const date = els.quickDate.value;
+    if (!title) { toast('할일 제목을 입력해주세요'); return; }
+    if (!date) { toast('날짜를 선택해주세요'); return; }
+    els.quickAdd.disabled = true;
+    const { error } = await sb.from('tasks').insert([{ title, deadline: date, status: 'pending' }]);
+    els.quickAdd.disabled = false;
+    if (error) { toast('저장 실패: ' + error.message); return; }
+    toast('저장되었어요');
+    els.quickTitle.value = '';
+    els.quickDate.value = toISODate(new Date());
+    loadTasks();
+  });
+  els.quickTitle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') els.quickAdd.click();
+  });
+
+  // ---- 여러 줄 분석 ----
+  els.parseBtn.addEventListener('click', () => {
+    const text = els.raw.value.trim();
+    if (!text) { toast('할일을 먼저 입력해주세요'); return; }
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (lines.length === 0) { toast('할일을 찾지 못했어요'); return; }
+    const tasks = lines.map(parseLine);
+    renderPreview(tasks);
+  });
+
+  els.clearBtn.addEventListener('click', () => {
+    els.raw.value = '';
+    els.preview.innerHTML = '';
+  });
+
+  function renderPreview(tasks) {
+    els.preview.innerHTML = `
+      <div class="preview">
+        <div class="preview-title">${tasks.length}개 할일을 찾았어요. 확인 후 저장하세요.</div>
+        <div id="previewItems"></div>
+        <div class="input-actions">
+          <button id="cancelPreview">취소</button>
+          <button id="savePreview" class="primary">저장하기</button>
+        </div>
+      </div>
+    `;
+    const items = $('#previewItems');
+    tasks.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'preview-item';
+      row.innerHTML = `
+        <input type="text" value="${escapeHtml(t.title)}" data-idx="${i}" data-field="title" />
+        <input type="date" value="${t.deadline}" data-idx="${i}" data-field="deadline" />
+        <button class="remove-btn" data-idx="${i}" title="삭제">×</button>
+      `;
+      items.appendChild(row);
+    });
+
+    items.addEventListener('click', (e) => {
+      if (e.target.matches('.remove-btn')) {
+        const idx = parseInt(e.target.dataset.idx);
+        tasks.splice(idx, 1);
+        if (tasks.length === 0) { els.preview.innerHTML = ''; return; }
+        renderPreview(tasks);
+      }
+    });
+    items.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      const field = e.target.dataset.field;
+      if (idx >= 0 && field) tasks[idx][field] = e.target.value;
+    });
+
+    $('#cancelPreview').addEventListener('click', () => { els.preview.innerHTML = ''; });
+    $('#savePreview').addEventListener('click', () => saveTasks(tasks));
+  }
+
+  async function saveTasks(tasks) {
+    const btn = $('#savePreview');
+    btn.disabled = true;
+    btn.textContent = '저장중...';
+    const rows = tasks
+      .filter(t => t.title && t.deadline)
+      .map(t => ({
+        title: t.title.trim(),
+        deadline: t.deadline,
+        status: 'pending',
+      }));
+    const { error } = await sb.from('tasks').insert(rows);
+    if (error) {
+      toast('저장 실패: ' + error.message);
+      btn.disabled = false;
+      btn.textContent = '저장하기';
+      return;
+    }
+    toast(`${rows.length}개 할일이 저장되었어요`);
+    els.raw.value = '';
+    els.preview.innerHTML = '';
+    loadTasks();
+  }
+
+  // ---- 할일 목록 ----
+  async function loadTasks() {
+    const { data, error } = await sb
+      .from('tasks').select('*').order('deadline', { ascending: true });
+    if (error) { console.error(error); return; }
+    renderTasks(data || []);
+  }
+
+  function dayDiff(deadlineStr) {
+    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(deadlineStr); d.setHours(0,0,0,0);
+    return Math.round((d - t) / 86400000);
+  }
+
+  function ddayLabel(diff) {
+    if (diff < 0) return { label: `D+${-diff}`, cls: 'd-overdue' };
+    if (diff === 0) return { label: 'D-DAY', cls: 'd-0' };
+    if (diff === 1) return { label: 'D-1', cls: 'd-1' };
+    if (diff <= 7) return { label: `D-${diff}`, cls: 'd-week' };
+    return { label: `D-${diff}`, cls: 'd-later' };
+  }
+
+  function renderTasks(tasks) {
+    const pending = tasks.filter(t => t.status === 'pending');
+    const done = tasks.filter(t => t.status === 'done');
+
+    if (pending.length === 0 && done.length === 0) {
+      els.list.innerHTML = '<div class="empty">아직 등록된 할일이 없어요</div>';
+      return;
+    }
+
+    const groups = {
+      overdue: { label: '기한 초과', cls: 'urgent', items: [] },
+      today:   { label: '오늘 마감', cls: 'urgent', items: [] },
+      tom:     { label: '내일 마감', cls: 'warn', items: [] },
+      week:    { label: '이번 주', cls: '', items: [] },
+      later:   { label: '나중에', cls: '', items: [] },
+    };
+
+    pending.forEach(t => {
+      const d = dayDiff(t.deadline);
+      if (d < 0) groups.overdue.items.push(t);
+      else if (d === 0) groups.today.items.push(t);
+      else if (d === 1) groups.tom.items.push(t);
+      else if (d <= 7) groups.week.items.push(t);
+      else groups.later.items.push(t);
+    });
+
+    let html = '';
+    for (const key of ['overdue', 'today', 'tom', 'week', 'later']) {
+      const g = groups[key];
+      if (g.items.length === 0) continue;
+      html += `<div class="group ${g.cls}">
+        <div class="group-header">
+          <div class="group-label">${g.label}</div>
+          <div class="group-count">${g.items.length}건</div>
+        </div>
+        ${g.items.map(taskHtml).join('')}
+      </div>`;
+    }
+
+    if (done.length > 0) {
+      html += `<div class="group">
+        <div class="group-header">
+          <div class="group-label">완료</div>
+          <div class="group-count">${done.length}건</div>
+        </div>
+        ${done.map(taskHtml).join('')}
+      </div>`;
+    }
+
+    els.list.innerHTML = html;
+
+    els.list.querySelectorAll('.task-check').forEach(el => {
+      el.addEventListener('click', () => toggleDone(el.dataset.id, el.dataset.status));
+    });
+    els.list.querySelectorAll('.del-btn').forEach(el => {
+      el.addEventListener('click', () => deleteTask(el.dataset.id));
+    });
+  }
+
+  function taskHtml(t) {
+    const diff = dayDiff(t.deadline);
+    const dd = ddayLabel(diff);
+    const isDone = t.status === 'done';
+    const date = new Date(t.deadline).toLocaleDateString('ko-KR', {
+      month: 'long', day: 'numeric', weekday: 'short',
+    });
+    return `
+      <div class="task ${isDone ? 'done' : ''}">
+        <div class="task-check" data-id="${t.id}" data-status="${t.status}"></div>
+        <div class="task-body">
+          <div class="task-title">${escapeHtml(t.title)}</div>
+          <div class="task-meta">${date}</div>
+        </div>
+        ${!isDone ? `<div class="dday ${dd.cls}">${dd.label}</div>` : ''}
+        <div class="task-actions">
+          <button class="del-btn" data-id="${t.id}">삭제</button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function toggleDone(id, currentStatus) {
+    const next = currentStatus === 'done' ? 'pending' : 'done';
+    const { error } = await sb.from('tasks').update({ status: next }).eq('id', id);
+    if (error) { toast('업데이트 실패'); return; }
+    loadTasks();
+  }
+
+  async function deleteTask(id) {
+    if (!confirm('이 할일을 삭제할까요?')) return;
+    const { error } = await sb.from('tasks').delete().eq('id', id);
+    if (error) { toast('삭제 실패'); return; }
+    toast('삭제되었어요');
+    loadTasks();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  loadTasks();
+</script>
+</body>
+</html>
