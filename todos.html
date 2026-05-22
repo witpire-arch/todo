@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>할일 정리 · MindCare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #f4efe7;
+    --surface: #ffffff;
+    --surface-2: #faf6ee;
+    --text: #1c1a17;
+    --text-soft: #6b6760;
+    --border: #e3dccf;
+    --accent: #2d3a55;
+    --urgent: #b8412c;
+    --warn: #b8762c;
+    --ok: #4a6b3e;
+    --shadow: 0 1px 2px rgba(28, 26, 23, 0.04), 0 8px 24px rgba(28, 26, 23, 0.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "IBM Plex Sans KR", -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    min-height: 100vh;
+    padding: 32px 20px 80px;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  /* ===== LOGIN VIEW ===== */
+  .login-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 40px 32px;
+    box-shadow: var(--shadow);
+    margin: 80px auto 0;
+    max-width: 420px;
+  }
+  .login-card .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .login-card h1 {
+    font-family: "Gowun Batang", serif;
+    font-size: 26px;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  .login-card .sub {
+    font-family: "Gowun Batang", serif;
+    color: var(--text-soft);
+    font-size: 13px;
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .google-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: 18px;
+  }
+  .google-btn:hover { background: var(--surface-2); border-color: var(--text-soft); }
+  .google-btn svg { width: 18px; height: 18px; }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 18px 0;
+    color: var(--text-soft);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .email-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .email-form input {
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    background: var(--surface);
+  }
+  .email-form input:focus { border-color: var(--accent); outline: none; }
+  .email-form button {
+    padding: 12px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .email-form button:hover { background: #1f2a3f; }
+  .email-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .login-note {
+    font-size: 11px;
+    color: var(--text-soft);
+    text-align: center;
+    margin-top: 20px;
+    line-height: 1.6;
+  }
+
+  /* ===== APP VIEW ===== */
+  header {
+    margin-bottom: 36px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header .left .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 8px;
+  }
+  header h1 {
+    font-family: "Gowun Batang", serif;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  header .date {
+    font-family: "Gowun Batang", serif;
+    color: var(--text-soft);
+    font-size: 14px;
+    margin-top: 4px;
+  }
+  header .right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-soft);
+  }
+  header .right .email { font-family: "Gowun Batang", serif; }
+  header .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-soft);
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  header .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+
+  section { margin-bottom: 32px; }
+
+  .section-title {
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    padding: 8px 0;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text-soft);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+  }
+
+  .banner {
+    background: #fbecd8;
+    border: 1px solid #e8c89a;
+    color: #7a5418;
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .banner button {
+    background: #b8762c;
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .banner button:hover { background: #9a6321; }
+
+  .input-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+
+  textarea, input[type="text"], input[type="date"], input[type="email"], select {
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--text);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 2px;
+    padding: 10px 12px;
+    outline: none;
+    line-height: 1.5;
+  }
+  textarea:focus, input:focus, select:focus { border-color: var(--accent); }
+
+  textarea {
+    width: 100%;
+    min-height: 140px;
+    border: none;
+    background: transparent;
+    resize: vertical;
+    padding: 0;
+  }
+  textarea::placeholder { color: #b8b1a5; }
+
+  .quick-form {
+    display: grid;
+    grid-template-columns: 1fr 150px 100px auto;
+    gap: 10px;
+  }
+  .quick-form input[type="date"] { font-family: "Gowun Batang", serif; }
+
+  .input-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 16px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    letter-spacing: 0.02em;
+  }
+  button:hover { background: var(--surface-2); border-color: var(--text-soft); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  button.primary:hover { background: #1f2a3f; border-color: #1f2a3f; }
+
+  .preview {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .preview-title {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-bottom: 12px;
+    letter-spacing: 0.06em;
+  }
+  .preview-item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .preview-item:last-child { border-bottom: none; }
+  .preview-item input[type="text"] { flex: 1; min-width: 180px; }
+  .preview-item input[type="date"] { width: 135px; }
+  .preview-item select { width: 90px; }
+  .preview-item .remove-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    font-size: 16px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+
+  .group { margin-bottom: 24px; }
+  .group-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .group-label {
+    font-family: "Gowun Batang", serif;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .group-count { font-size: 12px; color: var(--text-soft); letter-spacing: 0.06em; }
+  .group.urgent .group-label { color: var(--urgent); }
+  .group.warn .group-label { color: var(--warn); }
+
+  .task {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin-bottom: 6px;
+  }
+  .task:hover { box-shadow: var(--shadow); }
+  .task.done { opacity: 0.5; }
+  .task.done .task-title { text-decoration: line-through; }
+
+  .task-check {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+  .task-check:hover { border-color: var(--accent); }
+  .task.done .task-check { background: var(--ok); border-color: var(--ok); }
+  .task.done .task-check::after {
+    content: ""; position: absolute; top: 3px; left: 5px;
+    width: 4px; height: 8px; border: solid #fff;
+    border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+  }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-size: 14.5px; font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .task-title .recur-icon {
+    font-size: 11px;
+    background: var(--surface-2);
+    color: var(--text-soft);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 400;
+    border: 1px solid var(--border);
+  }
+  .task-meta {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-top: 2px;
+    font-family: "Gowun Batang", serif;
+  }
+  .task-actions button {
+    background: transparent;
+    border: none;
+    color: var(--text-soft);
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+  .task-actions button:hover { color: var(--urgent); background: transparent; }
+
+  .dday {
+    font-family: "Gowun Batang", serif;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .dday.d-overdue { background: #f5d4cc; color: var(--urgent); }
+  .dday.d-0 { background: #fbe1d8; color: var(--urgent); }
+  .dday.d-1 { background: #fbecd8; color: var(--warn); }
+  .dday.d-week { background: #e8e4d8; color: var(--text-soft); }
+  .dday.d-later { background: #efeae0; color: var(--text-soft); }
+
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text-soft);
+    font-family: "Gowun Batang", serif;
+    font-size: 15px;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .hint code {
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 11px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 20px;
+    border-radius: 2px;
+    font-size: 13px;
+    transition: transform 0.25s ease;
+    z-index: 100;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(28, 26, 23, 0.4);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 50;
+  }
+  .modal {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 28px;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal h2 {
+    font-family: "Gowun Batang", serif;
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .modal .modal-sub {
+    color: var(--text-soft);
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  .modal label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-bottom: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 14px;
+  }
+  .modal input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+  }
+  .modal .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+  }
+  .modal .help-text {
+    font-size: 12px;
+    background: var(--surface-2);
+    padding: 12px;
+    border-radius: 4px;
+    margin: 16px 0;
+    line-height: 1.7;
+    color: var(--text-soft);
+  }
+  .modal .help-text strong { color: var(--text); }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 600px) {
+    body { padding: 20px 14px 60px; }
+    header h1 { font-size: 26px; }
+    .quick-form { grid-template-columns: 1fr 1fr; }
+    .quick-form input[type="text"] { grid-column: 1 / -1; }
+    .quick-form button { grid-column: 1 / -1; }
+    .login-card { padding: 28px 22px; margin-top: 40px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN VIEW ============ -->
+<div id="loginView" class="wrap hidden">
+  <div class="login-card">
+    <div class="eyebrow">MindCare · Tasks</div>
+    <h1>로그인</h1>
+    <div class="sub">할일을 관리하고 텔레그램 알림을 받으세요</div>
+
+    <button class="google-btn" id="googleBtn">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Google로 로그인
+    </button>
+
+    <div class="divider">또는</div>
+
+    <form class="email-form" id="emailForm">
+      <input type="email" id="emailInput" placeholder="이메일 주소" required />
+      <button type="submit" id="emailBtn">로그인 링크 보내기</button>
+    </form>
+
+    <div class="login-note" id="loginNote">
+      이메일로 로그인하시면 비밀번호 없이 메일 안의 링크로 바로 들어올 수 있어요.
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP VIEW ============ -->
+<div id="appView" class="wrap hidden">
+  <header>
+    <div class="left">
+      <div class="eyebrow">MindCare · Tasks</div>
+      <h1>오늘의 할일</h1>
+      <div class="date" id="todayDate"></div>
+    </div>
+    <div class="right">
+      <span class="email" id="userEmail"></span>
+      <button class="icon-btn" id="settingsBtn" title="설정">⚙</button>
+      <button class="icon-btn" id="logoutBtn" title="로그아웃">⎋</button>
+    </div>
+  </header>
+
+  <div id="settingsBanner" class="banner hidden">
+    <span>📡 텔레그램 알림을 받으려면 설정이 필요해요</span>
+    <button id="openSettingsFromBanner">설정하기</button>
+  </div>
+
+  <section>
+    <div class="section-title">새 할일 입력</div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="quick">한 줄씩</button>
+      <button class="tab" data-tab="bulk">여러 줄</button>
+    </div>
+
+    <div class="input-card">
+      <div id="quickTab">
+        <div class="quick-form">
+          <input type="text" id="quickTitle" placeholder="할일 제목 (예: 회의록 정리)" />
+          <input type="date" id="quickDate" />
+          <select id="quickRecur">
+            <option value="once">한 번</option>
+            <option value="daily">매일</option>
+            <option value="weekly">매주</option>
+            <option value="monthly">매월</option>
+          </select>
+          <button id="quickAdd" class="primary">추가</button>
+        </div>
+        <div class="hint">
+          반복 할일은 완료해도 다음 날(주/달)로 자동 넘어가요.
+        </div>
+      </div>
+
+      <div id="bulkTab" class="hidden">
+        <textarea id="rawInput" placeholder="여러 줄로 한꺼번에 입력하세요.&#10;&#10;예시:&#10;매일 새벽기도&#10;매주 월요일 전도사님 미팅&#10;매월 5일 결산보고&#10;다음주 수요일까지 예산안&#10;6월 5일 보고서&#10;오늘 안에 영수증 정리"></textarea>
+        <div class="hint">
+          반복: <code>매일</code>, <code>매주</code>, <code>매주 월요일</code>, <code>매월</code>, <code>매월 5일</code><br />
+          단발: <code>오늘</code>, <code>내일</code>, <code>모레</code>, <code>다음주 수요일</code>, <code>6월 5일</code>, <code>12/25</code>
+        </div>
+        <div class="input-actions">
+          <button id="clearBtn">지우기</button>
+          <button id="parseBtn" class="primary">분석하기</button>
+        </div>
+        <div id="previewArea"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">진행 중인 할일</div>
+    <div id="taskList"></div>
+  </section>
+</div>
+
+<!-- ============ SETTINGS MODAL ============ -->
+<div id="settingsModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>설정</h2>
+    <div class="modal-sub">텔레그램 알림 받을 채팅방 정보를 입력하세요.</div>
+
+    <label for="chatIdInput">텔레그램 Chat ID</label>
+    <input type="text" id="chatIdInput" placeholder="-1001234567890 또는 본인 ID" />
+
+    <div class="help-text">
+      <strong>Chat ID 알아내는 법:</strong><br />
+      ① 텔레그램에서 <strong>@MindCare12000_Bot</strong> 검색해서 채팅 시작<br />
+      ② (단체방 알림 원하면) 본인이 만든 단체방에 봇 추가<br />
+      ③ 그 채팅방에서 <code>/id</code> 입력<br />
+      ④ 봇이 답변하는 Chat ID를 복사해서 위에 붙여넣기
+    </div>
+
+    <div class="modal-actions">
+      <button id="closeSettings">취소</button>
+      <button id="saveSettings" class="primary">저장</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============ CONFIG ============
+  const SUPABASE_URL = 'https://yzawmgbcbzmlwkcrptmm.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_uhehm3WWLisYPy2PlCMJ8g_ewrVw_fD';
+  // ================================
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => document.querySelectorAll(s);
+
+  let currentUser = null;
+  let currentProfile = null;
+
+  // ===== Toast =====
+  let toastTimer;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  }
+
+  // ===== Date utilities =====
+  function toISODate(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+  function addMonths(d, n) { const r = new Date(d); r.setMonth(r.getMonth() + n); return r; }
+
+  function advanceDeadline(deadlineStr, recurrence) {
+    const d = new Date(deadlineStr + 'T00:00:00');
+    if (recurrence === 'daily') return toISODate(addDays(d, 1));
+    if (recurrence === 'weekly') return toISODate(addDays(d, 7));
+    if (recurrence === 'monthly') return toISODate(addMonths(d, 1));
+    return deadlineStr;
+  }
+
+  // ===== Network helper with timeout & retry =====
+  // Supabase 첫 요청이 가끔 멈추는 이슈 대응
+  async function withTimeout(promise, ms = 12000, label = '요청') {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} 시간 초과`)), ms);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // 자동 재시도 (최대 3번까지)
+  async function withRetry(fnFactory, maxAttempts = 3, timeoutMs = 8000, label = '요청') {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const result = await withTimeout(fnFactory(), timeoutMs, label);
+        // Supabase 결과 객체의 error도 체크
+        if (result && result.error) {
+          lastErr = result.error;
+          // RLS/권한 오류는 재시도해도 의미 없음
+          if (result.error.code === '42501' || result.error.code === 'PGRST301') {
+            throw result.error;
+          }
+          continue;
+        }
+        return result;
+      } catch (err) {
+        lastErr = err;
+        // 잠깐 쉬고 다시 시도 (0.5초)
+        if (attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+    }
+    throw lastErr || new Error('알 수 없는 오류');
+  }
+
+  // ===== AUTH =====
+  async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      await onLogin(session.user);
+    } else {
+      showLogin();
+    }
+
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await onLogin(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        showLogin();
+      }
+    });
+  }
+
+  function showLogin() {
+    currentUser = null;
+    currentProfile = null;
+    $('#appView').classList.add('hidden');
+    $('#loginView').classList.remove('hidden');
+  }
+
+  async function onLogin(user) {
+    currentUser = user;
+    $('#loginView').classList.add('hidden');
+    $('#appView').classList.remove('hidden');
+    $('#userEmail').textContent = user.email || '';
+
+    const today = new Date();
+    $('#todayDate').textContent = today.toLocaleDateString('ko-KR', {
+      year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+    });
+    $('#quickDate').value = toISODate(today);
+
+    await loadProfile();
+    await loadTasks();
+  }
+
+  async function loadProfile() {
+    let { data, error } = await sb
+      .from('profiles')
+      .select('*')
+      .eq('id', currentUser.id)
+      .maybeSingle();
+    if (error) { console.error(error); return; }
+
+    // 프로필이 없으면 자동 생성 (Google OAuth trigger가 안 돌았을 경우 대비)
+    if (!data) {
+      const { data: created, error: createErr } = await sb
+        .from('profiles')
+        .upsert(
+          { id: currentUser.id, email: currentUser.email },
+          { onConflict: 'id' }
+        )
+        .select()
+        .maybeSingle();
+      if (createErr) { console.error('Profile create failed:', createErr); }
+      data = created;
+    }
+
+    currentProfile = data;
+    if (!data?.telegram_chat_id) {
+      $('#settingsBanner').classList.remove('hidden');
+    } else {
+      $('#settingsBanner').classList.add('hidden');
+    }
+  }
+
+  // Google login
+  $('#googleBtn').addEventListener('click', async () => {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.href },
+    });
+    if (error) {
+      toast('Google 로그인 실패: ' + error.message);
+      console.error(error);
+    }
+  });
+
+  // Magic link
+  $('#emailForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('#emailInput').value.trim();
+    if (!email) return;
+    const btn = $('#emailBtn');
+    btn.disabled = true;
+    btn.textContent = '전송 중...';
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href },
+    });
+    btn.disabled = false;
+    btn.textContent = '로그인 링크 보내기';
+    if (error) {
+      toast('전송 실패: ' + error.message);
+      return;
+    }
+    $('#loginNote').innerHTML = `<strong>📬 ${email}로 로그인 링크를 보냈어요.</strong><br />메일함을 확인하시고 링크를 클릭하면 자동으로 로그인됩니다.`;
+  });
+
+  // Logout
+  $('#logoutBtn').addEventListener('click', async () => {
+    if (!confirm('로그아웃하시겠어요?')) return;
+    await sb.auth.signOut();
+  });
+
+  // ===== Settings modal =====
+  $('#settingsBtn').addEventListener('click', () => openSettings());
+  $('#openSettingsFromBanner').addEventListener('click', () => openSettings());
+  $('#closeSettings').addEventListener('click', () => $('#settingsModal').classList.add('hidden'));
+  $('#saveSettings').addEventListener('click', async () => {
+    const chatId = $('#chatIdInput').value.trim();
+    if (!chatId) { toast('Chat ID를 입력해주세요'); return; }
+
+    const btn = $('#saveSettings');
+    btn.disabled = true;
+    btn.textContent = '저장 중...';
+
+    try {
+      // 최대 3번 자동 재시도 (Supabase 첫 요청 hang 이슈 대응)
+      const result = await withRetry(
+        () => sb.from('profiles').upsert(
+          {
+            id: currentUser.id,
+            email: currentUser.email,
+            telegram_chat_id: chatId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        ),
+        3, 8000, '저장'
+      );
+      if (result?.error) throw result.error;
+      toast('저장되었어요');
+      $('#settingsModal').classList.add('hidden');
+      await loadProfile();
+    } catch (err) {
+      toast('저장 실패: ' + (err.message || '잠시 후 다시 시도해주세요'));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '저장';
+    }
+  });
+
+  function openSettings() {
+    $('#chatIdInput').value = currentProfile?.telegram_chat_id || '';
+    $('#settingsModal').classList.remove('hidden');
+  }
+
+  // ===== Tabs =====
+  $$('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      $$('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const tab = t.dataset.tab;
+      $('#quickTab').classList.toggle('hidden', tab !== 'quick');
+      $('#bulkTab').classList.toggle('hidden', tab !== 'bulk');
+    });
+  });
+
+  // ===== Parser =====
+  function parseLine(line) {
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+
+    let recurrence = 'once';
+    let workingLine = line;
+
+    if (/매\s*일/.test(workingLine)) {
+      recurrence = 'daily';
+      workingLine = workingLine.replace(/매\s*일/, ' ').trim();
+    } else if (/매\s*주/.test(workingLine)) {
+      recurrence = 'weekly';
+      workingLine = workingLine.replace(/매\s*주/, ' ').trim();
+    } else if (/매\s*월|매\s*달/.test(workingLine)) {
+      recurrence = 'monthly';
+      workingLine = workingLine.replace(/매\s*월|매\s*달/, ' ').trim();
+    }
+
+    let deadline = null;
+    let cleanedTitle = workingLine;
+    let matched = '';
+
+    let m = workingLine.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (m) {
+      const month = parseInt(m[1], 10);
+      const day = parseInt(m[2], 10);
+      let y = base.getFullYear();
+      let candidate = new Date(y, month - 1, day);
+      if (candidate < base) candidate = new Date(y + 1, month - 1, day);
+      deadline = candidate;
+      matched = m[0];
+    }
+
+    if (!deadline && recurrence === 'monthly') {
+      m = workingLine.match(/(\d{1,2})\s*일(?![요])/);
+      if (m) {
+        const day = parseInt(m[1], 10);
+        if (day >= 1 && day <= 31) {
+          let candidate = new Date(base.getFullYear(), base.getMonth(), day);
+          if (candidate < base) candidate = new Date(base.getFullYear(), base.getMonth() + 1, day);
+          deadline = candidate;
+          matched = m[0];
+        }
+      }
+    }
+
+    if (!deadline) {
+      m = workingLine.match(/(\d{1,2})\/(\d{1,2})(?!\d)/);
+      if (m) {
+        const month = parseInt(m[1], 10);
+        const day = parseInt(m[2], 10);
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          let y = base.getFullYear();
+          let candidate = new Date(y, month - 1, day);
+          if (candidate < base) candidate = new Date(y + 1, month - 1, day);
+          deadline = candidate;
+          matched = m[0];
+        }
+      }
+    }
+
+    if (!deadline) {
+      m = workingLine.match(/(다음\s*주|담\s*주)\s*([일월화수목금토])요일/);
+      if (m) {
+        deadline = nextWeekday(base, m[2], true);
+        matched = m[0];
+      }
+    }
+
+    if (!deadline) {
+      m = workingLine.match(/(이번\s*주)\s*([일월화수목금토])요일/);
+      if (m) {
+        deadline = nextWeekday(base, m[2], false, true);
+        matched = m[0];
+      }
+    }
+
+    if (!deadline) {
+      m = workingLine.match(/([일월화수목금토])요일/);
+      if (m) {
+        deadline = nextWeekday(base, m[1], false);
+        matched = m[0];
+      }
+    }
+
+    if (!deadline) {
+      const relMap = [
+        { re: /오늘/, days: () => 0 },
+        { re: /내일/, days: () => 1 },
+        { re: /모레/, days: () => 2 },
+        { re: /글피/, days: () => 3 },
+        { re: /이번\s*주말/, days: (b) => {
+          const dow = b.getDay();
+          if (dow === 0) return 6;
+          if (dow === 6) return 0;
+          return 6 - dow;
+        }},
+        { re: /다음\s*주말/, days: (b) => 6 - b.getDay() + 7 },
+        { re: /다음\s*주|담\s*주/, days: () => 7 },
+        { re: /이번\s*주/, days: (b) => {
+          const dow = b.getDay();
+          if (dow >= 5) return 0;
+          return 5 - dow;
+        }},
+      ];
+      for (const item of relMap) {
+        const mm = workingLine.match(item.re);
+        if (mm) {
+          deadline = addDays(base, item.days(base));
+          matched = mm[0];
+          break;
+        }
+      }
+    }
+
+    if (!deadline) deadline = base;
+
+    if (matched) {
+      const re = new RegExp(
+        matched.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*(까지|안에|중에|쯤)?',
+        ''
+      );
+      cleanedTitle = cleanedTitle.replace(re, '').trim();
+    }
+    cleanedTitle = cleanedTitle.replace(/^[\s,;:•·\-—]+|[\s,;:•·\-—]+$/g, '').replace(/\s+/g, ' ');
+    if (!cleanedTitle) cleanedTitle = line.trim();
+
+    return {
+      title: cleanedTitle.slice(0, 100),
+      deadline: toISODate(deadline),
+      recurrence,
+    };
+  }
+
+  function nextWeekday(base, dayChar, forceNextWeek = false, thisWeekOnly = false) {
+    const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+    const target = weekDays.indexOf(dayChar);
+    const baseDow = base.getDay();
+    let diff = target - baseDow;
+    if (thisWeekOnly) {
+      if (diff < 0) diff += 7;
+    } else {
+      if (diff <= 0) diff += 7;
+    }
+    if (forceNextWeek) diff += 7;
+    return addDays(base, diff);
+  }
+
+  // ===== Quick add =====
+  $('#quickAdd').addEventListener('click', async () => {
+    const title = $('#quickTitle').value.trim();
+    const date = $('#quickDate').value;
+    const recurrence = $('#quickRecur').value;
+    if (!title) { toast('할일 제목을 입력해주세요'); return; }
+    if (!date) { toast('날짜를 선택해주세요'); return; }
+    const btn = $('#quickAdd');
+    btn.disabled = true;
+    btn.textContent = '저장중...';
+    try {
+      const result = await withRetry(
+        () => sb.from('tasks').insert([{
+          title, deadline: date, status: 'pending', recurrence,
+          user_id: currentUser.id,
+        }]),
+        3, 8000, '저장'
+      );
+      if (result?.error) throw result.error;
+      toast('저장되었어요');
+      $('#quickTitle').value = '';
+      $('#quickDate').value = toISODate(new Date());
+      $('#quickRecur').value = 'once';
+      loadTasks();
+    } catch (err) {
+      toast('저장 실패: ' + (err.message || '잠시 후 다시 시도해주세요'));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '추가';
+    }
+  });
+  $('#quickTitle').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('#quickAdd').click();
+  });
+
+  // ===== Bulk parse =====
+  $('#parseBtn').addEventListener('click', () => {
+    const text = $('#rawInput').value.trim();
+    if (!text) { toast('할일을 먼저 입력해주세요'); return; }
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (lines.length === 0) { toast('할일을 찾지 못했어요'); return; }
+    const tasks = lines.map(parseLine);
+    renderPreview(tasks);
+  });
+
+  $('#clearBtn').addEventListener('click', () => {
+    $('#rawInput').value = '';
+    $('#previewArea').innerHTML = '';
+  });
+
+  function renderPreview(tasks) {
+    $('#previewArea').innerHTML = `
+      <div class="preview">
+        <div class="preview-title">${tasks.length}개 할일을 찾았어요. 확인 후 저장하세요.</div>
+        <div id="previewItems"></div>
+        <div class="input-actions">
+          <button id="cancelPreview">취소</button>
+          <button id="savePreview" class="primary">저장하기</button>
+        </div>
+      </div>
+    `;
+    const items = $('#previewItems');
+    tasks.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'preview-item';
+      row.innerHTML = `
+        <input type="text" value="${escapeHtml(t.title)}" data-idx="${i}" data-field="title" />
+        <input type="date" value="${t.deadline}" data-idx="${i}" data-field="deadline" />
+        <select data-idx="${i}" data-field="recurrence">
+          <option value="once" ${t.recurrence==='once'?'selected':''}>한 번</option>
+          <option value="daily" ${t.recurrence==='daily'?'selected':''}>매일</option>
+          <option value="weekly" ${t.recurrence==='weekly'?'selected':''}>매주</option>
+          <option value="monthly" ${t.recurrence==='monthly'?'selected':''}>매월</option>
+        </select>
+        <button class="remove-btn" data-idx="${i}" title="삭제">×</button>
+      `;
+      items.appendChild(row);
+    });
+    items.addEventListener('click', (e) => {
+      if (e.target.matches('.remove-btn')) {
+        const idx = parseInt(e.target.dataset.idx);
+        tasks.splice(idx, 1);
+        if (tasks.length === 0) { $('#previewArea').innerHTML = ''; return; }
+        renderPreview(tasks);
+      }
+    });
+    items.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      const field = e.target.dataset.field;
+      if (idx >= 0 && field) tasks[idx][field] = e.target.value;
+    });
+    items.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.idx);
+      const field = e.target.dataset.field;
+      if (idx >= 0 && field) tasks[idx][field] = e.target.value;
+    });
+    $('#cancelPreview').addEventListener('click', () => { $('#previewArea').innerHTML = ''; });
+    $('#savePreview').addEventListener('click', () => saveTasks(tasks));
+  }
+
+  async function saveTasks(tasks) {
+    const btn = $('#savePreview');
+    btn.disabled = true;
+    btn.textContent = '저장중...';
+    const rows = tasks
+      .filter(t => t.title && t.deadline)
+      .map(t => ({
+        title: t.title.trim(),
+        deadline: t.deadline,
+        status: 'pending',
+        recurrence: t.recurrence || 'once',
+        user_id: currentUser.id,
+      }));
+    try {
+      const result = await withRetry(
+        () => sb.from('tasks').insert(rows),
+        3, 10000, '저장'
+      );
+      if (result?.error) throw result.error;
+      toast(`${rows.length}개 할일이 저장되었어요`);
+      $('#rawInput').value = '';
+      $('#previewArea').innerHTML = '';
+      loadTasks();
+    } catch (err) {
+      toast('저장 실패: ' + (err.message || '잠시 후 다시 시도해주세요'));
+      btn.disabled = false;
+      btn.textContent = '저장하기';
+    }
+  }
+
+  // ===== Task list =====
+  async function loadTasks() {
+    const { data, error } = await sb
+      .from('tasks').select('*').order('deadline', { ascending: true });
+    if (error) { console.error(error); return; }
+    renderTasks(data || []);
+  }
+
+  function dayDiff(deadlineStr) {
+    const t = new Date(); t.setHours(0,0,0,0);
+    const d = new Date(deadlineStr); d.setHours(0,0,0,0);
+    return Math.round((d - t) / 86400000);
+  }
+
+  function ddayLabel(diff) {
+    if (diff < 0) return { label: `D+${-diff}`, cls: 'd-overdue' };
+    if (diff === 0) return { label: 'D-DAY', cls: 'd-0' };
+    if (diff === 1) return { label: 'D-1', cls: 'd-1' };
+    if (diff <= 7) return { label: `D-${diff}`, cls: 'd-week' };
+    return { label: `D-${diff}`, cls: 'd-later' };
+  }
+
+  const recurIcon = { once: '', daily: '🔄 매일', weekly: '🔄 매주', monthly: '🔄 매월' };
+
+  function renderTasks(tasks) {
+    const list = $('#taskList');
+    const pending = tasks.filter(t => t.status === 'pending');
+    const done = tasks.filter(t => t.status === 'done');
+
+    if (pending.length === 0 && done.length === 0) {
+      list.innerHTML = '<div class="empty">아직 등록된 할일이 없어요</div>';
+      return;
+    }
+
+    const groups = {
+      overdue: { label: '기한 초과', cls: 'urgent', items: [] },
+      today:   { label: '오늘 마감', cls: 'urgent', items: [] },
+      tom:     { label: '내일 마감', cls: 'warn', items: [] },
+      week:    { label: '이번 주', cls: '', items: [] },
+      later:   { label: '나중에', cls: '', items: [] },
+    };
+
+    pending.forEach(t => {
+      const d = dayDiff(t.deadline);
+      if (d < 0) groups.overdue.items.push(t);
+      else if (d === 0) groups.today.items.push(t);
+      else if (d === 1) groups.tom.items.push(t);
+      else if (d <= 7) groups.week.items.push(t);
+      else groups.later.items.push(t);
+    });
+
+    let html = '';
+    for (const key of ['overdue', 'today', 'tom', 'week', 'later']) {
+      const g = groups[key];
+      if (g.items.length === 0) continue;
+      html += `<div class="group ${g.cls}">
+        <div class="group-header">
+          <div class="group-label">${g.label}</div>
+          <div class="group-count">${g.items.length}건</div>
+        </div>
+        ${g.items.map(taskHtml).join('')}
+      </div>`;
+    }
+
+    if (done.length > 0) {
+      html += `<div class="group">
+        <div class="group-header">
+          <div class="group-label">완료</div>
+          <div class="group-count">${done.length}건</div>
+        </div>
+        ${done.map(taskHtml).join('')}
+      </div>`;
+    }
+
+    list.innerHTML = html;
+    list.querySelectorAll('.task-check').forEach(el => {
+      el.addEventListener('click', () => toggleDone(el.dataset.id));
+    });
+    list.querySelectorAll('.del-btn').forEach(el => {
+      el.addEventListener('click', () => deleteTask(el.dataset.id));
+    });
+  }
+
+  function taskHtml(t) {
+    const diff = dayDiff(t.deadline);
+    const dd = ddayLabel(diff);
+    const isDone = t.status === 'done';
+    const date = new Date(t.deadline).toLocaleDateString('ko-KR', {
+      month: 'long', day: 'numeric', weekday: 'short',
+    });
+    const recur = recurIcon[t.recurrence || 'once'];
+    return `
+      <div class="task ${isDone ? 'done' : ''}">
+        <div class="task-check" data-id="${t.id}"></div>
+        <div class="task-body">
+          <div class="task-title">
+            ${escapeHtml(t.title)}
+            ${recur ? `<span class="recur-icon">${recur}</span>` : ''}
+          </div>
+          <div class="task-meta">${date}</div>
+        </div>
+        ${!isDone ? `<div class="dday ${dd.cls}">${dd.label}</div>` : ''}
+        <div class="task-actions">
+          <button class="del-btn" data-id="${t.id}">삭제</button>
+        </div>
+      </div>
+    `;
+  }
+
+  async function toggleDone(id) {
+    const { data: task, error: fetchErr } = await sb
+      .from('tasks').select('*').eq('id', id).maybeSingle();
+    if (fetchErr || !task) { toast('할일을 찾을 수 없어요'); return; }
+
+    if (task.status === 'done') {
+      const { error } = await sb.from('tasks').update({ status: 'pending' }).eq('id', id);
+      if (error) { toast('업데이트 실패'); return; }
+    } else {
+      if (task.recurrence && task.recurrence !== 'once') {
+        const nextDate = advanceDeadline(task.deadline, task.recurrence);
+        const { error } = await sb.from('tasks').update({ deadline: nextDate }).eq('id', id);
+        if (error) { toast('업데이트 실패'); return; }
+        toast(`다음 일정: ${nextDate}`);
+      } else {
+        const { error } = await sb.from('tasks').update({ status: 'done' }).eq('id', id);
+        if (error) { toast('업데이트 실패'); return; }
+      }
+    }
+    loadTasks();
+  }
+
+  async function deleteTask(id) {
+    if (!confirm('이 할일을 삭제할까요?')) return;
+    const { error } = await sb.from('tasks').delete().eq('id', id);
+    if (error) { toast('삭제 실패'); return; }
+    toast('삭제되었어요');
+    loadTasks();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  // ============= INIT =============
+  init();
+</script>
+</body>
+</html>
