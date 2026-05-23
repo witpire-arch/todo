@@ -2,8 +2,24 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>할일 정리 · MindCare</title>
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#2d3a55" />
+<meta name="description" content="할일을 관리하고 텔레그램 알림을 받으세요" />
+
+<!-- iOS PWA 지원 -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="MindCare" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+<!-- 파비콘 -->
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -31,7 +47,7 @@
     color: var(--text);
     line-height: 1.55;
     min-height: 100vh;
-    padding: 32px 20px 80px;
+    padding: max(32px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(80px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
     font-weight: 400;
     -webkit-font-smoothing: antialiased;
   }
@@ -1353,6 +1369,28 @@
 
   // ============= INIT =============
   init();
+
+  // ============= PWA Service Worker 등록 =============
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        // 새 버전이 있으면 자동 갱신
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'activated') {
+                // 조용히 다음번 로드 시 적용 (사용자 방해 X)
+                console.log('새 버전이 적용됐어요. 다음 접속부터 반영돼요.');
+              }
+            });
+          }
+        });
+      }).catch((err) => {
+        console.warn('Service Worker 등록 실패:', err);
+      });
+    });
+  }
 </script>
 </body>
 </html>
