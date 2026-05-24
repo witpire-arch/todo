@@ -73,10 +73,12 @@ async function sendForUser(supabase, telegramToken, profile, kstNow, todayLabel,
   addSection(`📌 <b>이번 주 일정</b>`, upcoming, true, false);
 
   const total = overdue.length + d0.length + d1.length + d3.length + upcoming.length;
+  const urgent = overdue.length + d0.length + d1.length;
 
-  // 일정이 없으면 알림 발송 스킵 (조용히)
-  if (total === 0) {
-    return { skipped: true, reason: 'no tasks' };
+  // 오늘/내일/기한 초과 일정이 없으면 알림 발송 스킵 (조용히)
+  // 먼 미래(D-3, 이번 주) 일정만 있을 때는 알림 안 감
+  if (urgent === 0) {
+    return { skipped: true, reason: 'no urgent tasks' };
   }
 
   if (buttons.length > 0) {
