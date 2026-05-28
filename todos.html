@@ -687,6 +687,18 @@
       ④ 봇이 답변하는 Chat ID를 복사해서 위에 붙여넣기
     </div>
 
+    <label for="icalUrlInput">📅 Google Calendar iCal URL <span style="font-weight:400; color:var(--text-soft); text-transform:none; letter-spacing:0;">(선택사항)</span></label>
+    <input type="text" id="icalUrlInput" placeholder="https://calendar.google.com/calendar/ical/.../basic.ics" />
+
+    <div class="help-text">
+      <strong>구글 캘린더 자동 동기화:</strong><br />
+      Google Calendar의 일정이 자동으로 할일 앱에 들어와요. (1시간 안에 반영)<br /><br />
+      ① <a href="https://calendar.google.com" target="_blank">Google Calendar</a> 접속<br />
+      ② 좌측 "내 캘린더" 옆 점 3개 ⋯ 클릭 → <strong>설정 및 공유</strong><br />
+      ③ "캘린더 통합" 섹션의 <strong>비공개 주소(iCal 형식)</strong> 복사<br />
+      ④ 위에 붙여넣기
+    </div>
+
     <div class="modal-actions">
       <button id="closeSettings">취소</button>
       <button id="saveSettings" class="primary">저장</button>
@@ -895,6 +907,7 @@
   $('#closeSettings').addEventListener('click', () => $('#settingsModal').classList.add('hidden'));
   $('#saveSettings').addEventListener('click', async () => {
     const chatId = $('#chatIdInput').value.trim();
+    const icalUrl = $('#icalUrlInput').value.trim();
     if (!chatId) { toast('Chat ID를 입력해주세요'); return; }
 
     const btn = $('#saveSettings');
@@ -909,6 +922,7 @@
             id: currentUser.id,
             email: currentUser.email,
             telegram_chat_id: chatId,
+            gcal_ical_url: icalUrl || null,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'id' }
@@ -929,6 +943,7 @@
 
   function openSettings() {
     $('#chatIdInput').value = currentProfile?.telegram_chat_id || '';
+    $('#icalUrlInput').value = currentProfile?.gcal_ical_url || '';
     $('#settingsModal').classList.remove('hidden');
   }
 
@@ -1313,6 +1328,7 @@
       month: 'long', day: 'numeric', weekday: 'short',
     });
     const recur = recurIcon[t.recurrence || 'once'];
+    const sourceIcon = t.source === 'gcal' ? '<span class="recur-icon" style="background:#e8e4f0;color:#5a4a7a;">📅 캘린더</span>' : '';
     return `
       <div class="task ${isDone ? 'done' : ''}">
         <div class="task-check" data-id="${t.id}"></div>
@@ -1320,6 +1336,7 @@
           <div class="task-title">
             ${escapeHtml(t.title)}
             ${recur ? `<span class="recur-icon">${recur}</span>` : ''}
+            ${sourceIcon}
           </div>
           <div class="task-meta">${date}</div>
         </div>
