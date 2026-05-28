@@ -18,6 +18,27 @@ function toISODate(d) {
   return `${y}-${m}-${day}`;
 }
 
+// 시간 정보를 제목 앞에 붙임 ("17:00 영양제")
+// 종일 일정이면 제목만 반환
+function formatTitleWithTime(title, event, startDate) {
+  // node-ical은 종일 일정의 start에 dateOnly 속성을 붙임
+  const isAllDay = event.start && event.start.dateOnly === true;
+  if (isAllDay) return title;
+
+  const d = new Date(startDate);
+  if (isNaN(d.getTime())) return title;
+
+  const hh = d.getHours();
+  const mm = d.getMinutes();
+  // 자정(00:00)이면 종일로 간주하고 시간 표시 안 함
+  if (hh === 0 && mm === 0) return title;
+
+  const timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  // 제목에 이미 시간이 들어있으면 중복 방지
+  if (title.startsWith(timeStr)) return title;
+  return `${timeStr} ${title}`.slice(0, MAX_TITLE_LENGTH);
+}
+
 // 향후 며칠치 동기화할지
 const SYNC_DAYS_AHEAD = 30;
 const MAX_TITLE_LENGTH = 100;
@@ -85,15 +106,22 @@ async function syncUserCalendar(supabase, profile) {
         // 개별 수정된 제목/날짜 적용
         let occTitle = summary;
         let occDeadline = occDateStr;
+        let occStart = occ;
         if (overrideDates.has(occDateStr)) {
           const ov = recurOverrides[occDateStr];
           if (ov.summary) occTitle = ov.summary.trim().slice(0, MAX_TITLE_LENGTH);
-          if (ov.start) occDeadline = toISODate(new Date(ov.start));
+          if (ov.start) {
+            occStart = new Date(ov.start);
+            occDeadline = toISODate(occStart);
+          }
         }
+
+        // 시간 정보 추가
+        const titleWithTime = formatTitleWithTime(occTitle, event, occStart);
 
         newTasks.push({
           user_id: profile.id,
-          title: occTitle,
+          title: titleWithTime,
           deadline: occDeadline,
           status: 'pending',
           recurrence: 'once',
@@ -114,9 +142,12 @@ async function syncUserCalendar(supabase, profile) {
       if (seen.has(externalId)) continue;
       seen.add(externalId);
 
+      // 시간 정보가 있으면 제목 앞에 추가 ("17:00 영양제")
+      const titleWithTime = formatTitleWithTime(summary, event, start);
+
       newTasks.push({
         user_id: profile.id,
-        title: summary,
+        title: titleWithTime,
         deadline: toISODate(startDateOnly),
         status: 'pending',
         recurrence: 'once',
