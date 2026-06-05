@@ -1,41 +1,40 @@
 // Vercel Function: /api/sync-calendar
-// 각 사용자의 Google Calendar iCal URL에서 일정을 가져와 tasks 테이블에 동기화합니다.
+// Google Calendar iCal URL에서 일정을 가져와 tasks 테이블에 동기화합니다.
 //
 // 동작 규칙:
 // - 단발 일정: 향후 30일 이내면 동기화
-// - 반복 일정: 다가오는 "다음 1회"만 동기화 (지나면 다음 회차가 자동으로 들어옴)
-// - 모든 시간은 한국 시간(KST, UTC+9) 기준으로 처리
-// - 새 일정 → INSERT, 변경 → UPDATE, 사라진 pending → DELETE
+// - 반복 일정: 다가오는 "다음 1회"만 동기화 (지나면 다음 회차 자동 등록)
+// - 모든 시간은 한국 시간(KST) 기준으로 처리 (Intl API 사용)
 // - 이미 완료(done)된 일정은 그대로 유지
 
 const { createClient } = require('@supabase/supabase-js');
 const ical = require('node-ical');
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const SYNC_DAYS_AHEAD = 30;
 const MAX_TITLE_LENGTH = 100;
+const KST_TZ = 'Asia/Seoul';
 
-// UTC 기준 Date를 KST 벽시계 시각으로 변환 (getUTC* 로 읽으면 KST 시각)
-function toKST(date) {
-  return new Date(new Date(date).getTime() + KST_OFFSET_MS);
-}
+// === KST 변환 헬퍼 (Intl API 사용 - 가장 신뢰할 수 있음) ===
 
-// KST 기준 날짜 문자열 (YYYY-MM-DD)
 function toKSTDateStr(date) {
-  const k = toKST(date);
-  const y = k.getUTCFullYear();
-  const m = String(k.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(k.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: KST_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
 }
 
-// 그 날짜의 KST 자정을 UTC 인스턴트로 (비교용)
+function toKSTTimeStr(date) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: KST_TZ,
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(date);
+}
+
 function kstMidnight(date) {
   const dateStr = toKSTDateStr(date);
   return new Date(`${dateStr}T00:00:00+09:00`);
 }
 
-// 시간 정보를 제목 앞에 붙임 ("17:00 영양제"), KST 기준
 function formatTitleWithTime(title, event, startDate) {
   const isAllDay = event.start && event.start.dateOnly === true;
   if (isAllDay) return title;
@@ -43,12 +42,8 @@ function formatTitleWithTime(title, event, startDate) {
   const d = new Date(startDate);
   if (isNaN(d.getTime())) return title;
 
-  const k = toKST(d);
-  const hh = k.getUTCHours();
-  const mm = k.getUTCMinutes();
-  if (hh === 0 && mm === 0) return title;
-
-  const timeStr = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  const timeStr = toKSTTimeStr(d);
+  if (timeStr === '00:00') return title;
   if (title.startsWith(timeStr)) return title;
   return `${timeStr} ${title}`.slice(0, MAX_TITLE_LENGTH);
 }
@@ -70,6 +65,7 @@ async function syncUserCalendar(supabase, profile) {
 
   const newTasks = [];
   const seen = new Set();
+  const debugSamples = [];
 
   for (const key of Object.keys(events)) {
     const event = events[key];
@@ -79,7 +75,6 @@ async function syncUserCalendar(supabase, profile) {
     const summary = (event.summary || '제목 없음').trim().slice(0, MAX_TITLE_LENGTH);
     const uid = event.uid || key;
 
-    // ===== 반복 일정: 다음 1회만 =====
     if (event.rrule) {
       const exdateSet = new Set();
       if (event.exdate) {
@@ -119,17 +114,27 @@ async function syncUserCalendar(supabase, profile) {
       if (seen.has(externalId)) continue;
       seen.add(externalId);
 
+      const finalTitle = formatTitleWithTime(occTitle, event, occStart);
       newTasks.push({
         user_id: profile.id,
-        title: formatTitleWithTime(occTitle, event, occStart),
+        title: finalTitle,
         deadline: occDateStr,
         status: 'pending',
         recurrence: 'once',
         source: 'gcal',
         external_id: externalId,
       });
+
+      if (debugSamples.length < 3) {
+        debugSamples.push({
+          original_summary: summary,
+          raw_start_iso: new Date(occStart).toISOString(),
+          kst_date: occDateStr,
+          kst_time: toKSTTimeStr(occStart),
+          final_title: finalTitle,
+        });
+      }
     } else {
-      // ===== 단발 일정 =====
       const start = new Date(event.start);
       if (isNaN(start.getTime())) continue;
 
@@ -140,15 +145,26 @@ async function syncUserCalendar(supabase, profile) {
       if (seen.has(externalId)) continue;
       seen.add(externalId);
 
+      const finalTitle = formatTitleWithTime(summary, event, start);
       newTasks.push({
         user_id: profile.id,
-        title: formatTitleWithTime(summary, event, start),
+        title: finalTitle,
         deadline: toKSTDateStr(start),
         status: 'pending',
         recurrence: 'once',
         source: 'gcal',
         external_id: externalId,
       });
+
+      if (debugSamples.length < 3) {
+        debugSamples.push({
+          original_summary: summary,
+          raw_start_iso: start.toISOString(),
+          kst_date: toKSTDateStr(start),
+          kst_time: toKSTTimeStr(start),
+          final_title: finalTitle,
+        });
+      }
     }
   }
 
@@ -210,7 +226,11 @@ async function syncUserCalendar(supabase, profile) {
     else deleted = toDelete.length;
   }
 
-  return { inserted, updated, deleted, total_synced: newTasks.length };
+  return {
+    inserted, updated, deleted,
+    total_synced: newTasks.length,
+    samples: debugSamples,
+  };
 }
 
 module.exports = async function handler(req, res) {
