@@ -5,6 +5,6 @@
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
-    "node-ical": "^0.18.0"
+    "node-ical": "0.26.1"
   }
 }
