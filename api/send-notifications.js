@@ -138,6 +138,24 @@ module.exports = async function handler(req, res) {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+  // 알림 발송 전에 캘린더 자동 동기화 (이걸로 별도 cron 불필요)
+  // 동기화 실패해도 알림은 계속 진행
+  try {
+    const baseUrl = `https://${req.headers.host || 'todo-rust-sigma-55.vercel.app'}`;
+    const syncUrl = CRON_SECRET
+      ? `${baseUrl}/api/sync-calendar?secret=${encodeURIComponent(CRON_SECRET)}`
+      : `${baseUrl}/api/sync-calendar`;
+    const syncRes = await fetch(syncUrl);
+    if (syncRes.ok) {
+      const syncData = await syncRes.json();
+      console.log('Calendar sync done:', syncData);
+    } else {
+      console.warn('Calendar sync failed with status:', syncRes.status);
+    }
+  } catch (err) {
+    console.warn('Calendar sync error (continuing with notifications):', err.message);
+  }
+
   const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const todayLabel = kstNow.toLocaleDateString('ko-KR', {
     timeZone: 'UTC',
