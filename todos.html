@@ -246,6 +246,52 @@
     font-weight: 500;
   }
 
+  .team-bar {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .team-pill {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-soft); padding: 6px 14px; border-radius: 999px;
+    font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  .team-pill.active {
+    background: var(--accent); border-color: var(--accent);
+    color: #fff; font-weight: 500;
+  }
+  .team-add {
+    background: transparent; border: 1px dashed var(--border);
+    color: var(--text-soft); padding: 6px 12px; border-radius: 999px;
+    font-family: inherit; font-size: 13px; cursor: pointer;
+  }
+  .team-card {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; margin-bottom: 10px; background: var(--surface-2);
+  }
+  .team-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .team-card-name { font-weight: 500; font-size: 14px; }
+  .team-badge {
+    font-size: 11px; background: var(--accent); color: #fff;
+    padding: 1px 8px; border-radius: 999px;
+  }
+  .team-invite, .team-chat { display: flex; gap: 6px; margin-bottom: 8px; }
+  .team-invite input, .team-chat input {
+    flex: 1; font-size: 12px; padding: 6px 8px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); color: var(--text); font-family: inherit;
+  }
+  .team-invite button, .team-chat button {
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); padding: 6px 12px; border-radius: 4px;
+  }
+  .team-del, .team-leave {
+    font-family: inherit; font-size: 12px; cursor: pointer;
+    border: 1px solid #e8c4bc; background: var(--surface);
+    color: var(--urgent); padding: 6px 12px; border-radius: 4px;
+    width: 100%; margin-top: 2px;
+  }
+
   .banner {
     background: #fbecd8;
     border: 1px solid #e8c89a;
@@ -618,6 +664,8 @@
     </div>
   </header>
 
+  <div id="teamBar" class="team-bar"></div>
+
   <div id="settingsBanner" class="banner hidden">
     <span>📡 텔레그램 알림을 받으려면 설정이 필요해요</span>
     <button id="openSettingsFromBanner">설정하기</button>
@@ -706,6 +754,27 @@
   </div>
 </div>
 
+<!-- ============ TEAM MODAL ============ -->
+<div id="teamModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>팀 관리</h2>
+    <div class="modal-sub">팀을 만들고 초대 링크를 공유하세요. 같은 팀끼리는 할일을 함께 봐요.</div>
+
+    <label for="newTeamName">새 팀 만들기</label>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="newTeamName" placeholder="예: 노원팀" style="flex:1;" />
+      <button id="createTeamBtn" class="primary">만들기</button>
+    </div>
+
+    <label style="margin-top:18px;">내 팀</label>
+    <div id="teamListManage"></div>
+
+    <div class="modal-actions">
+      <button id="closeTeam">닫기</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -721,6 +790,8 @@
 
   let currentUser = null;
   let currentProfile = null;
+  let currentTeamId = null;   // null = 개인 보기
+  let myTeams = [];
 
   // ===== Toast =====
   let toastTimer;
@@ -829,6 +900,8 @@
     $('#quickDate').value = toISODate(today);
 
     await loadProfile();
+    await loadTeams();
+    await handleJoinParam();
     await loadTasks();
   }
 
@@ -861,6 +934,146 @@
       $('#settingsBanner').classList.add('hidden');
     }
   }
+
+  // ===== TEAMS =====
+  async function loadTeams() {
+    const { data, error } = await sb
+      .from('teams').select('*').order('created_at', { ascending: true });
+    if (error) { console.error(error); myTeams = []; }
+    else myTeams = data || [];
+    // 선택했던 팀이 더 이상 내 팀이 아니면 개인으로 되돌림
+    if (currentTeamId && !myTeams.some(t => t.id === currentTeamId)) currentTeamId = null;
+    renderTeamBar();
+  }
+
+  function renderTeamBar() {
+    const bar = $('#teamBar');
+    let html = `<button class="team-pill ${currentTeamId === null ? 'active' : ''}" data-team="">개인</button>`;
+    myTeams.forEach(t => {
+      html += `<button class="team-pill ${currentTeamId === t.id ? 'active' : ''}" data-team="${t.id}">${escapeHtml(t.name)}</button>`;
+    });
+    html += `<button class="team-add" id="openTeamModalBtn">＋ 팀</button>`;
+    bar.innerHTML = html;
+    bar.querySelectorAll('.team-pill').forEach(p => {
+      p.addEventListener('click', () => selectTeam(p.dataset.team || null));
+    });
+    $('#openTeamModalBtn').addEventListener('click', openTeamModal);
+  }
+
+  function selectTeam(id) {
+    currentTeamId = id || null;
+    renderTeamBar();
+    loadTasks();
+  }
+
+  function inviteLink(t) {
+    return `${location.origin}${location.pathname}?join=${t.join_code}`;
+  }
+
+  async function createTeam(name) {
+    const { data, error } = await sb
+      .from('teams').insert({ name, owner_id: currentUser.id })
+      .select().maybeSingle();
+    if (error) { toast('팀 생성 실패: ' + error.message); return; }
+    await loadTeams();
+    if (data) selectTeam(data.id);
+    renderTeamManage();
+    toast('팀을 만들었어요');
+  }
+
+  // 초대 링크(?join=코드)로 들어오면 자동 합류
+  async function handleJoinParam() {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('join');
+    if (!code) return;
+    try {
+      const { data, error } = await sb.rpc('join_team_by_code', { _code: code });
+      if (error) throw error;
+      await loadTeams();
+      if (data) selectTeam(data);   // data = 합류한 team_id
+      toast('팀에 합류했어요!');
+    } catch (err) {
+      toast('합류 실패: ' + (err.message || '초대 코드를 확인해주세요'));
+    } finally {
+      params.delete('join');
+      const url = location.pathname + (params.toString() ? '?' + params.toString() : '');
+      history.replaceState({}, '', url);
+    }
+  }
+
+  function openTeamModal() {
+    renderTeamManage();
+    $('#teamModal').classList.remove('hidden');
+  }
+
+  function renderTeamManage() {
+    const box = $('#teamListManage');
+    if (myTeams.length === 0) {
+      box.innerHTML = '<div style="font-size:13px;color:var(--text-soft);padding:8px 0;">아직 팀이 없어요. 위에서 만들어보세요.</div>';
+      return;
+    }
+    box.innerHTML = myTeams.map(t => {
+      const owner = t.owner_id === currentUser.id;
+      const link = inviteLink(t);
+      return `
+      <div class="team-card">
+        <div class="team-card-head">
+          <span class="team-card-name">${escapeHtml(t.name)}</span>
+          ${owner ? '<span class="team-badge">오너</span>' : ''}
+        </div>
+        <div class="team-invite">
+          <input type="text" readonly value="${escapeHtml(link)}" />
+          <button class="copy-link" data-link="${escapeHtml(link)}">복사</button>
+        </div>
+        ${owner ? `
+        <div class="team-chat">
+          <input type="text" class="team-chat-input" placeholder="팀 단톡방 Chat ID (알람용)" value="${escapeHtml(t.telegram_chat_id || '')}" />
+          <button class="save-chat" data-team="${t.id}">저장</button>
+        </div>
+        <button class="team-del" data-team="${t.id}">팀 삭제</button>
+        ` : `
+        <button class="team-leave" data-team="${t.id}">팀 나가기</button>
+        `}
+      </div>`;
+    }).join('');
+
+    box.querySelectorAll('.copy-link').forEach(b => b.addEventListener('click', () => {
+      navigator.clipboard.writeText(b.dataset.link).then(() => toast('초대 링크 복사됨')).catch(() => toast('복사 실패 — 직접 선택해 복사해주세요'));
+    }));
+    box.querySelectorAll('.save-chat').forEach(b => b.addEventListener('click', async () => {
+      const input = b.closest('.team-card').querySelector('.team-chat-input');
+      const chatId = input.value.trim();
+      const { error } = await sb.from('teams').update({ telegram_chat_id: chatId || null }).eq('id', b.dataset.team);
+      if (error) { toast('저장 실패: ' + error.message); return; }
+      toast('팀 단톡방 저장됨');
+      await loadTeams();
+    }));
+    box.querySelectorAll('.team-del').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('이 팀과 모든 팀 할일이 삭제돼요. 계속할까요?')) return;
+      const { error } = await sb.from('teams').delete().eq('id', b.dataset.team);
+      if (error) { toast('삭제 실패: ' + error.message); return; }
+      toast('팀을 삭제했어요');
+      if (currentTeamId === b.dataset.team) currentTeamId = null;
+      await loadTeams(); renderTeamManage(); loadTasks();
+    }));
+    box.querySelectorAll('.team-leave').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('이 팀에서 나갈까요?')) return;
+      const { error } = await sb.from('team_members').delete()
+        .eq('team_id', b.dataset.team).eq('user_id', currentUser.id);
+      if (error) { toast('나가기 실패: ' + error.message); return; }
+      toast('팀에서 나왔어요');
+      if (currentTeamId === b.dataset.team) currentTeamId = null;
+      await loadTeams(); renderTeamManage(); loadTasks();
+    }));
+  }
+
+  $('#createTeamBtn').addEventListener('click', () => {
+    const name = $('#newTeamName').value.trim();
+    if (!name) { toast('팀 이름을 입력해주세요'); return; }
+    $('#newTeamName').value = '';
+    createTeam(name);
+  });
+  $('#closeTeam').addEventListener('click', () => $('#teamModal').classList.add('hidden'));
 
   // Google login
   $('#googleBtn').addEventListener('click', async () => {
@@ -1121,7 +1334,7 @@
       const result = await withRetry(
         () => sb.from('tasks').insert([{
           title, deadline: date, status: 'pending', recurrence,
-          user_id: currentUser.id,
+          user_id: currentUser.id, team_id: currentTeamId,
         }]),
         3, 8000, '저장'
       );
@@ -1219,6 +1432,7 @@
         status: 'pending',
         recurrence: t.recurrence || 'once',
         user_id: currentUser.id,
+        team_id: currentTeamId,
       }));
     try {
       const result = await withRetry(
@@ -1239,8 +1453,10 @@
 
   // ===== Task list =====
   async function loadTasks() {
-    const { data, error } = await sb
-      .from('tasks').select('*').order('deadline', { ascending: true });
+    let q = sb.from('tasks').select('*').order('deadline', { ascending: true });
+    if (currentTeamId) q = q.eq('team_id', currentTeamId);
+    else q = q.is('team_id', null);
+    const { data, error } = await q;
     if (error) { console.error(error); return; }
     renderTasks(data || []);
   }
