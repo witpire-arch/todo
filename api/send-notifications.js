@@ -1,33 +1,22 @@
 // Vercel Function: /api/send-notifications
-// 외부 cron 서비스(cron-job.org)가 4시간마다 이 URL을 호출하면 모든 사용자에게 알림을 발송합니다.
+// 외부 cron 서비스(cron-job.org)가 4시간마다 이 URL을 호출하면 알림을 발송합니다.
+//  - 개인 할일(team_id 없음) → 각자 개인 텔레그램으로
+//  - 팀 할일(team_id 있음)   → 그 팀의 단톡방(teams.telegram_chat_id)으로
 // 보안을 위해 CRON_SECRET 환경변수와 비교하여 무단 호출을 막습니다.
 
 const { createClient } = require('@supabase/supabase-js');
 
-async function sendForUser(supabase, telegramToken, profile, kstNow, todayLabel, timeLabel) {
-  const chatId = profile.telegram_chat_id;
-  if (!chatId) return { skipped: true, reason: 'no chat_id' };
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const recurEmoji = (r) => {
+  if (r === 'daily') return ' 🔄매일';
+  if (r === 'weekly') return ' 🔄매주';
+  if (r === 'monthly') return ' 🔄매월';
+  return '';
+};
 
-  const todayStr = kstNow.toISOString().split('T')[0];
-
-  const { data: tasks, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('status', 'pending')
-    .eq('user_id', profile.id)
-    .order('deadline', { ascending: true });
-
-  if (error) {
-    console.error(`User ${profile.id} task fetch failed:`, error);
-    return { error: error.message };
-  }
-
-  const overdue = [];
-  const d0 = [];
-  const d1 = [];
-  const d3 = [];
-  const upcoming = [];
-
+// 할일 목록 → 마감 임박도로 분류해서 메시지(+버튼) 생성
+function composeDigest(tasks, todayStr, headerLine, useButtons) {
+  const overdue = [], d0 = [], d1 = [], d3 = [], upcoming = [];
   const today = new Date(todayStr + 'T00:00:00Z');
   for (const task of tasks || []) {
     const deadline = new Date(task.deadline + 'T00:00:00Z');
@@ -39,18 +28,10 @@ async function sendForUser(supabase, telegramToken, profile, kstNow, todayLabel,
     else if (diff >= 2 && diff <= 7) upcoming.push({ ...task, diff });
   }
 
-  const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const recurEmoji = (r) => {
-    if (r === 'daily') return ' 🔄매일';
-    if (r === 'weekly') return ' 🔄매주';
-    if (r === 'monthly') return ' 🔄매월';
-    return '';
-  };
-
-  let msg = `📋 <b>${esc(todayLabel)} ${esc(timeLabel)}</b>\n오늘의 할일 요약이에요.\n`;
+  let msg = headerLine;
   const buttons = [];
 
-  function addSection(title, list, withDiffLabel, withButtons) {
+  function addSection(title, list, withDiffLabel, withBtns) {
     if (list.length === 0) return;
     msg += `\n${title}\n`;
     list.forEach(t => {
@@ -59,7 +40,7 @@ async function sendForUser(supabase, telegramToken, profile, kstNow, todayLabel,
         : '';
       const recur = recurEmoji(t.recurrence);
       msg += `• ${esc(t.title)}<i>${esc(recur)}</i>${diffSuffix}\n`;
-      if (withButtons) {
+      if (withBtns && useButtons) {
         const btnLabel = `✅ ${t.title.length > 38 ? t.title.slice(0, 38) + '…' : t.title}`;
         buttons.push([{ text: btnLabel, callback_data: `done:${t.id}` }]);
       }
@@ -72,50 +53,95 @@ async function sendForUser(supabase, telegramToken, profile, kstNow, todayLabel,
   addSection(`📅 <b>3일 후 마감 · D-3 (${d3.length})</b>`, d3, false, false);
   addSection(`📌 <b>이번 주 일정</b>`, upcoming, true, false);
 
-  const total = overdue.length + d0.length + d1.length + d3.length + upcoming.length;
   const urgent = overdue.length + d0.length + d1.length;
-
-  // 오늘/내일/기한 초과 일정이 없으면 알림 발송 스킵 (조용히)
-  // 먼 미래(D-3, 이번 주) 일정만 있을 때는 알림 안 감
-  if (urgent === 0) {
-    return { skipped: true, reason: 'no urgent tasks' };
-  }
-
-  if (buttons.length > 0) {
+  if (urgent > 0 && buttons.length > 0) {
     msg += `\n<i>오늘 마감 항목은 아래 버튼으로 바로 완료 처리할 수 있어요.</i>`;
   }
 
+  return { msg, buttons, urgent, total: tasks?.length || 0 };
+}
+
+async function sendTelegram(token, chatId, msg, buttons) {
   const payload = {
     chat_id: chatId,
     text: msg,
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   };
-  if (buttons.length > 0) {
+  if (buttons && buttons.length > 0) {
     payload.reply_markup = { inline_keyboard: buttons };
   }
+  const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const tgJson = await tgRes.json();
+  if (!tgJson.ok) throw new Error(tgJson.description || 'telegram error');
+}
+
+// 개인 알림: team_id 없는(개인) 할일만
+async function sendForUser(supabase, token, profile, todayStr, headerLine) {
+  const chatId = profile.telegram_chat_id;
+  if (!chatId) return { skipped: true, reason: 'no chat_id' };
+
+  const { data: tasks, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('status', 'pending')
+    .eq('user_id', profile.id)
+    .is('team_id', null)               // 개인 할일만 (팀 할일은 단톡방으로)
+    .order('deadline', { ascending: true });
+
+  if (error) {
+    console.error(`User ${profile.id} task fetch failed:`, error);
+    return { error: error.message };
+  }
+
+  const { msg, buttons, urgent, total } = composeDigest(tasks, todayStr, headerLine, true);
+  if (urgent === 0) return { skipped: true, reason: 'no urgent tasks' };
 
   try {
-    const tgRes = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const tgJson = await tgRes.json();
-    if (!tgJson.ok) {
-      console.error(`User ${profile.id} Telegram error:`, tgJson);
-      return { error: tgJson.description };
-    }
-    return { sent: true, tasks: tasks?.length || 0 };
+    await sendTelegram(token, chatId, msg, buttons);
+    return { sent: true, tasks: total };
   } catch (err) {
     console.error(`User ${profile.id} send failed:`, err);
     return { error: err.message };
   }
 }
 
+// 팀 알림: 그 팀의 할일을 팀 단톡방으로 (완료 버튼 없음)
+async function sendForTeam(supabase, token, team, todayStr, todayLabel) {
+  const chatId = team.telegram_chat_id;
+  if (!chatId) return { skipped: true, reason: 'no chat_id' };
+
+  const { data: tasks, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('status', 'pending')
+    .eq('team_id', team.id)
+    .order('deadline', { ascending: true });
+
+  if (error) {
+    console.error(`Team ${team.id} task fetch failed:`, error);
+    return { error: error.message };
+  }
+
+  const headerLine = `👥 <b>${esc(team.name)}</b> · ${esc(todayLabel)}\n팀 할일 요약이에요.\n`;
+  const { msg, urgent, total } = composeDigest(tasks, todayStr, headerLine, false);
+  if (urgent === 0) return { skipped: true, reason: 'no urgent tasks' };
+
+  try {
+    await sendTelegram(token, chatId, msg, []);
+    return { sent: true, tasks: total };
+  } catch (err) {
+    console.error(`Team ${team.id} send failed:`, err);
+    return { error: err.message };
+  }
+}
+
 module.exports = async function handler(req, res) {
   // CRON_SECRET이 설정돼 있으면, 요청에 같은 값이 있는지 확인
-  // cron-job.org에서는 Authorization 헤더로 보내거나 ?secret=xxx 쿼리로 보냄
   const CRON_SECRET = process.env.CRON_SECRET;
   if (CRON_SECRET) {
     const provided =
@@ -138,8 +164,7 @@ module.exports = async function handler(req, res) {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // 알림 발송 전에 캘린더 자동 동기화 (이걸로 별도 cron 불필요)
-  // 동기화 실패해도 알림은 계속 진행
+  // 알림 발송 전에 캘린더 자동 동기화 (별도 cron 불필요). 실패해도 알림은 계속.
   try {
     const baseUrl = `https://${req.headers.host || 'todo-rust-sigma-55.vercel.app'}`;
     const syncUrl = CRON_SECRET
@@ -147,8 +172,7 @@ module.exports = async function handler(req, res) {
       : `${baseUrl}/api/sync-calendar`;
     const syncRes = await fetch(syncUrl);
     if (syncRes.ok) {
-      const syncData = await syncRes.json();
-      console.log('Calendar sync done:', syncData);
+      console.log('Calendar sync done:', await syncRes.json());
     } else {
       console.warn('Calendar sync failed with status:', syncRes.status);
     }
@@ -157,6 +181,7 @@ module.exports = async function handler(req, res) {
   }
 
   const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const todayStr = kstNow.toISOString().split('T')[0];
   const todayLabel = kstNow.toLocaleDateString('ko-KR', {
     timeZone: 'UTC',
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
@@ -165,29 +190,43 @@ module.exports = async function handler(req, res) {
     timeZone: 'UTC',
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
+  const userHeader = `📋 <b>${esc(todayLabel)} ${esc(timeLabel)}</b>\n오늘의 할일 요약이에요.\n`;
 
-  const { data: profiles, error } = await supabase
+  // ===== 1) 개인 알림 =====
+  const { data: profiles, error: pErr } = await supabase
     .from('profiles')
     .select('id, email, telegram_chat_id')
     .not('telegram_chat_id', 'is', null);
 
-  if (error) {
-    console.error('Profiles fetch failed:', error);
+  if (pErr) {
+    console.error('Profiles fetch failed:', pErr);
     return res.status(500).json({ error: 'DB error' });
   }
 
-  if (!profiles || profiles.length === 0) {
-    return res.status(200).json({ sent: 0, message: 'no users with telegram_chat_id' });
+  const userResults = [];
+  for (const profile of profiles || []) {
+    const r = await sendForUser(supabase, TELEGRAM_BOT_TOKEN, profile, todayStr, userHeader);
+    userResults.push({ user: profile.email, ...r });
   }
 
-  const results = [];
-  for (const profile of profiles) {
-    const result = await sendForUser(
-      supabase, TELEGRAM_BOT_TOKEN, profile,
-      kstNow, todayLabel, timeLabel
-    );
-    results.push({ user: profile.email, ...result });
+  // ===== 2) 팀 알림 =====
+  const { data: teams, error: tErr } = await supabase
+    .from('teams')
+    .select('id, name, telegram_chat_id')
+    .not('telegram_chat_id', 'is', null);
+
+  if (tErr) console.error('Teams fetch failed:', tErr);
+
+  const teamResults = [];
+  for (const team of teams || []) {
+    const r = await sendForTeam(supabase, TELEGRAM_BOT_TOKEN, team, todayStr, todayLabel);
+    teamResults.push({ team: team.name, ...r });
   }
 
-  return res.status(200).json({ sent: results.length, results });
+  return res.status(200).json({
+    users: userResults.length,
+    teams: teamResults.length,
+    userResults,
+    teamResults,
+  });
 };
