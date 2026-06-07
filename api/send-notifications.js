@@ -110,7 +110,7 @@ async function sendForUser(supabase, token, profile, todayStr, headerLine) {
   }
 }
 
-// 팀 알림: 그 팀의 할일을 팀 단톡방으로 (완료 버튼 없음)
+// 팀 알림: 그 팀의 할일을 팀 단톡방으로 (완료 버튼 포함)
 async function sendForTeam(supabase, token, team, todayStr, todayLabel) {
   const chatId = team.telegram_chat_id;
   if (!chatId) return { skipped: true, reason: 'no chat_id' };
@@ -128,11 +128,11 @@ async function sendForTeam(supabase, token, team, todayStr, todayLabel) {
   }
 
   const headerLine = `👥 <b>${esc(team.name)}</b> · ${esc(todayLabel)}\n팀 할일 요약이에요.\n`;
-  const { msg, urgent, total } = composeDigest(tasks, todayStr, headerLine, false);
+  const { msg, buttons, urgent, total } = composeDigest(tasks, todayStr, headerLine, true);
   if (urgent === 0) return { skipped: true, reason: 'no urgent tasks' };
 
   try {
-    await sendTelegram(token, chatId, msg, []);
+    await sendTelegram(token, chatId, msg, buttons);
     return { sent: true, tasks: total };
   } catch (err) {
     console.error(`Team ${team.id} send failed:`, err);

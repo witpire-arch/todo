@@ -102,7 +102,7 @@ module.exports = async function handler(req, res) {
 
     const { data: existing, error: fetchErr } = await supabase
       .from('tasks')
-      .select('id, title, status, recurrence, deadline, user_id')
+      .select('id, title, status, recurrence, deadline, user_id, team_id')
       .eq('id', taskId)
       .maybeSingle();
 
@@ -113,12 +113,22 @@ module.exports = async function handler(req, res) {
     }
 
     // 권한 확인
-    const { data: profile } = await supabase
-      .from('profiles').select('id').eq('telegram_chat_id', String(chatId)).maybeSingle();
-
-    if (!profile || profile.id !== existing.user_id) {
-      await answer('이 할일에 대한 권한이 없어요', true);
-      return res.status(200).send('unauthorized');
+    if (existing.team_id) {
+      // 팀 할일: 그 팀의 단톡방에서 눌렀는지 확인 (그 방에 있는 사람 = 팀 멤버)
+      const { data: team } = await supabase
+        .from('teams').select('telegram_chat_id').eq('id', existing.team_id).maybeSingle();
+      if (!team || String(team.telegram_chat_id) !== String(chatId)) {
+        await answer('이 할일에 대한 권한이 없어요', true);
+        return res.status(200).send('unauthorized');
+      }
+    } else {
+      // 개인 할일: 본인만
+      const { data: profile } = await supabase
+        .from('profiles').select('id').eq('telegram_chat_id', String(chatId)).maybeSingle();
+      if (!profile || profile.id !== existing.user_id) {
+        await answer('이 할일에 대한 권한이 없어요', true);
+        return res.status(200).send('unauthorized');
+      }
     }
 
     if (existing.status === 'done') {
