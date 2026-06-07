@@ -971,12 +971,13 @@
   }
 
   async function createTeam(name) {
-    const { data, error } = await sb
-      .from('teams').insert({ name, owner_id: currentUser.id })
-      .select().maybeSingle();
+    // 막 만든 팀은 아직 RLS상 "내 팀"으로 안 보여서 INSERT...RETURNING(.select)이 막힘.
+    // INSERT만 하고, 트리거가 오너 멤버 등록을 끝낸 뒤 loadTeams로 다시 읽어온다.
+    const { error } = await sb.from('teams').insert({ name, owner_id: currentUser.id });
     if (error) { toast('팀 생성 실패: ' + error.message); return; }
     await loadTeams();
-    if (data) selectTeam(data.id);
+    const created = myTeams[myTeams.length - 1];   // 방금 만든 팀이 가장 최근
+    if (created) selectTeam(created.id);
     renderTeamManage();
     toast('팀을 만들었어요');
   }
