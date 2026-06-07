@@ -292,6 +292,43 @@
     width: 100%; margin-top: 2px;
   }
 
+  .list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .view-toggle { display: flex; gap: 4px; }
+  .vt {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-soft); padding: 5px 12px; border-radius: 999px;
+    font-family: inherit; font-size: 12px; cursor: pointer;
+  }
+  .vt.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+
+  .cal-head { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 12px; }
+  .cal-title { font-size: 15px; font-weight: 500; color: var(--text); min-width: 110px; text-align: center; }
+  .cal-nav {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 16px; line-height: 1;
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-dow { text-align: center; font-size: 11px; color: var(--text-soft); padding: 4px 0; }
+  .cal-cell {
+    min-height: 74px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); padding: 4px; overflow: hidden;
+  }
+  .cal-cell.empty { background: transparent; border-color: transparent; }
+  .cal-cell.today { border-color: var(--accent); background: var(--surface-2); }
+  .cal-daynum { font-size: 11px; color: var(--text-soft); margin-bottom: 2px; }
+  .cal-cell.today .cal-daynum { color: var(--accent); font-weight: 600; }
+  .cal-task {
+    font-size: 10px; line-height: 1.3; padding: 2px 4px; margin-bottom: 2px;
+    border-radius: 3px; background: #eef0f5; color: var(--accent);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  }
+  .cal-task.done { background: transparent; color: var(--text-soft); text-decoration: line-through; cursor: default; }
+  .cal-more { font-size: 10px; color: var(--text-soft); padding-left: 4px; }
+  @media (max-width: 520px) {
+    .cal-cell { min-height: 58px; }
+    .cal-task { font-size: 9px; }
+  }
+
   .banner {
     background: #fbecd8;
     border: 1px solid #e8c89a;
@@ -713,8 +750,15 @@
   </section>
 
   <section>
-    <div class="section-title">진행 중인 할일</div>
+    <div class="list-head">
+      <div class="section-title">진행 중인 할일</div>
+      <div class="view-toggle">
+        <button class="vt active" data-view="list">목록</button>
+        <button class="vt" data-view="calendar">달력</button>
+      </div>
+    </div>
     <div id="taskList"></div>
+    <div id="calendarView" class="hidden"></div>
   </section>
 </div>
 
@@ -792,6 +836,9 @@
   let currentProfile = null;
   let currentTeamId = null;   // null = 개인 보기
   let myTeams = [];
+  let viewMode = 'list';      // 'list' | 'calendar'
+  let calRef = new Date();    // 달력에 표시 중인 달
+  let currentTasks = [];      // 현재 로드된 할일 (뷰 전환 시 재사용)
 
   // ===== Toast =====
   let toastTimer;
@@ -1459,7 +1506,8 @@
     else q = q.is('team_id', null);
     const { data, error } = await q;
     if (error) { console.error(error); return; }
-    renderTasks(data || []);
+    currentTasks = data || [];
+    renderView();
   }
 
   function dayDiff(deadlineStr) {
@@ -1536,6 +1584,66 @@
       el.addEventListener('click', () => deleteTask(el.dataset.id));
     });
   }
+
+  // ===== View toggle (목록 / 달력) =====
+  function renderView() {
+    if (viewMode === 'calendar') renderCalendar();
+    else renderTasks(currentTasks);
+  }
+
+  function renderCalendar() {
+    const box = $('#calendarView');
+    const year = calRef.getFullYear();
+    const month = calRef.getMonth();
+    const startDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const todayStr = toISODate(new Date());
+
+    const byDate = {};
+    (currentTasks || []).forEach(t => {
+      (byDate[t.deadline] = byDate[t.deadline] || []).push(t);
+    });
+
+    let html = `
+      <div class="cal-head">
+        <button class="cal-nav" id="calPrev">‹</button>
+        <span class="cal-title">${year}년 ${month + 1}월</span>
+        <button class="cal-nav" id="calNext">›</button>
+      </div>
+      <div class="cal-grid">`;
+    ['일','월','화','수','목','금','토'].forEach(d => { html += `<div class="cal-dow">${d}</div>`; });
+    for (let i = 0; i < startDow; i++) html += `<div class="cal-cell empty"></div>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const items = byDate[ds] || [];
+      const isToday = ds === todayStr;
+      let cell = `<div class="cal-cell${isToday ? ' today' : ''}"><div class="cal-daynum">${day}</div>`;
+      items.slice(0, 4).forEach(t => {
+        const done = t.status === 'done';
+        cell += `<div class="cal-task${done ? ' done' : ''}" data-id="${t.id}" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>`;
+      });
+      if (items.length > 4) cell += `<div class="cal-more">+${items.length - 4}</div>`;
+      cell += `</div>`;
+      html += cell;
+    }
+    html += `</div>`;
+    box.innerHTML = html;
+
+    $('#calPrev').addEventListener('click', () => { calRef = new Date(year, month - 1, 1); renderCalendar(); });
+    $('#calNext').addEventListener('click', () => { calRef = new Date(year, month + 1, 1); renderCalendar(); });
+    box.querySelectorAll('.cal-task:not(.done)').forEach(el => {
+      el.addEventListener('click', () => toggleDone(el.dataset.id));
+    });
+  }
+
+  $$('.vt').forEach(b => b.addEventListener('click', () => {
+    $$('.vt').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    viewMode = b.dataset.view;
+    $('#taskList').classList.toggle('hidden', viewMode !== 'list');
+    $('#calendarView').classList.toggle('hidden', viewMode !== 'calendar');
+    renderView();
+  }));
 
   function taskHtml(t) {
     const diff = dayDiff(t.deadline);
