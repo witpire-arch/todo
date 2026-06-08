@@ -323,6 +323,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
   }
   .cal-task.done { background: transparent; color: var(--text-soft); text-decoration: line-through; cursor: default; }
+  .cal-task.preview { background: transparent; color: var(--text-soft); border: 1px dashed #c4ccdd; cursor: default; opacity: 0.85; }
   .cal-more { font-size: 10px; color: var(--text-soft); padding-left: 4px; }
   @media (max-width: 520px) {
     .cal-cell { min-height: 58px; }
@@ -1591,6 +1592,29 @@
     else renderTasks(currentTasks);
   }
 
+  // 반복 일정을 해당 월의 회차 날짜들로 펼침 (다음 마감일부터 미래만)
+  function occurrencesInMonth(task, year, month) {
+    const rec = task.recurrence || 'once';
+    const mm = String(month + 1).padStart(2, '0');
+    if (rec === 'once') {
+      return (task.deadline && task.deadline.startsWith(`${year}-${mm}`)) ? [task.deadline] : [];
+    }
+    const base = new Date(task.deadline + 'T00:00:00');
+    if (isNaN(base.getTime())) return [];
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const out = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(year, month, day);
+      if (d < base) continue;                       // 다음 마감일 이전(지난 회차)은 표시 안 함
+      let match = false;
+      if (rec === 'daily') match = true;
+      else if (rec === 'weekly') match = d.getDay() === base.getDay();
+      else if (rec === 'monthly') match = d.getDate() === base.getDate();
+      if (match) out.push(`${year}-${mm}-${String(day).padStart(2, '0')}`);
+    }
+    return out;
+  }
+
   function renderCalendar() {
     const box = $('#calendarView');
     const year = calRef.getFullYear();
@@ -1599,9 +1623,16 @@
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const todayStr = toISODate(new Date());
 
+    // 반복 일정은 이 달의 모든 회차로 펼침 (다음 마감일=실제·클릭가능, 나머지=미리보기)
     const byDate = {};
+    const addOcc = (ds, t) => { (byDate[ds] = byDate[ds] || []).push(t); };
     (currentTasks || []).forEach(t => {
-      (byDate[t.deadline] = byDate[t.deadline] || []).push(t);
+      const rec = t.recurrence || 'once';
+      if (t.status === 'done' || rec === 'once') {
+        addOcc(t.deadline, { ...t, _preview: false });
+      } else {
+        occurrencesInMonth(t, year, month).forEach(ds => addOcc(ds, { ...t, _preview: ds !== t.deadline }));
+      }
     });
 
     let html = `
@@ -1620,7 +1651,10 @@
       let cell = `<div class="cal-cell${isToday ? ' today' : ''}"><div class="cal-daynum">${day}</div>`;
       items.slice(0, 4).forEach(t => {
         const done = t.status === 'done';
-        cell += `<div class="cal-task${done ? ' done' : ''}" data-id="${t.id}" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>`;
+        const preview = t._preview;
+        const cls = done ? ' done' : (preview ? ' preview' : '');
+        const clickable = !done && !preview;
+        cell += `<div class="cal-task${cls}"${clickable ? ` data-id="${t.id}"` : ''} title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>`;
       });
       if (items.length > 4) cell += `<div class="cal-more">+${items.length - 4}</div>`;
       cell += `</div>`;
@@ -1631,7 +1665,7 @@
 
     $('#calPrev').addEventListener('click', () => { calRef = new Date(year, month - 1, 1); renderCalendar(); });
     $('#calNext').addEventListener('click', () => { calRef = new Date(year, month + 1, 1); renderCalendar(); });
-    box.querySelectorAll('.cal-task:not(.done)').forEach(el => {
+    box.querySelectorAll('.cal-task[data-id]').forEach(el => {
       el.addEventListener('click', () => toggleDone(el.dataset.id));
     });
   }
