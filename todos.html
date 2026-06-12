@@ -828,7 +828,14 @@
   const SUPABASE_KEY = 'sb_publishable_uhehm3WWLisYPy2PlCMJ8g_ewrVw_fD';
   // ================================
 
-  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      persistSession: true,       // 세션을 localStorage에 저장 → 자동 로그인 유지
+      autoRefreshToken: true,     // 토큰 만료 전 자동 갱신
+      detectSessionInUrl: true,
+      storage: window.localStorage,
+    },
+  });
 
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => document.querySelectorAll(s);
