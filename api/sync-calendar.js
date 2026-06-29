@@ -115,12 +115,16 @@ async function syncUserCalendar(supabase, profile) {
       seen.add(externalId);
 
       const finalTitle = formatTitleWithTime(occTitle, event, occStart);
+      // 구글 RRULE 반복주기(FREQ) → 앱 recurrence (달력에서 매주/매일/매월로 펼쳐짐)
+      // rrule.js Frequency: MONTHLY=1, WEEKLY=2, DAILY=3
+      const freq = event.rrule.origOptions && event.rrule.origOptions.freq;
+      const recurrence = freq === 3 ? 'daily' : freq === 2 ? 'weekly' : freq === 1 ? 'monthly' : 'once';
       newTasks.push({
         user_id: profile.id,
         title: finalTitle,
         deadline: occDateStr,
         status: 'pending',
-        recurrence: 'once',
+        recurrence,
         source: 'gcal',
         external_id: externalId,
       });
@@ -170,7 +174,7 @@ async function syncUserCalendar(supabase, profile) {
 
   const { data: existing, error: fetchErr } = await supabase
     .from('tasks')
-    .select('id, external_id, status, deadline, title')
+    .select('id, external_id, status, deadline, title, recurrence')
     .eq('user_id', profile.id)
     .eq('source', 'gcal');
 
@@ -192,7 +196,7 @@ async function syncUserCalendar(supabase, profile) {
     if (!exist) {
       toInsert.push(newTask);
     } else if (exist.status === 'pending') {
-      if (exist.deadline !== newTask.deadline || exist.title !== newTask.title) {
+      if (exist.deadline !== newTask.deadline || exist.title !== newTask.title || exist.recurrence !== newTask.recurrence) {
         toUpdate.push({ id: exist.id, ...newTask });
       }
     }
